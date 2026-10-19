@@ -388,7 +388,7 @@
     background: 'Цвет фона. Вариант «Прозрачный» убирает заливку.',
     borderWidth: 'Толщина рамки по периметру элемента. Значение 0 отключает рамку.',
     borderColor: 'Цвет рамки. Видно, если толщина рамки больше нуля.',
-    borderRadius: 'Скругление углов от 0 до 50%. Для старых проектов сохраняется оформление в px, пока вы не измените ползунок.',
+    borderRadius: 'Устанавливает CSS border-radius от 0% до 50%. Проценты применяются браузером к размерам самого элемента.',
     x: 'Горизонтальная координата относительно свободного контейнера.',
     y: 'Вертикальная координата относительно свободного контейнера.',
     layout: 'Как располагать элементы внутри контейнера: сверху вниз, слева направо либо в заданных координатах.',
@@ -439,8 +439,8 @@
     const value = clamp(parseFloat(raw) || 0, 0, 50);
     return `<div class="field"><div class="field-heading"><label class="field-label" for="radiusRange">Скругление</label>${help('Скругление',TIPS.borderRadius)}</div>
       <div class="radius-row"><input id="radiusRange" class="radius-range" data-prop="style.borderRadius" type="range" min="0" max="50" step="1" value="${value}">
-      <output class="radius-value" for="radiusRange">${oldPx ? esc(raw) : value + '%'}</output></div>
-      ${oldPx ? '<p class="field-note">Старый проект: значение в px сохраняется до изменения ползунка.</p>' : ''}</div>`;
+      <output class="radius-value" for="radiusRange">${value}%</output></div>
+      ${oldPx ? '<p class="field-note">Старое оформление в px сохранено. Передвиньте ползунок, чтобы применить значение в %.</p>' : ''}</div>`;
   }
   function spacingFields(kind,label) {
     const node = locate(selectedId).node;
