@@ -1,0 +1,94 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <title>WB Panel — редактор v0.3</title>
+  <link rel="stylesheet" href="styles.css">
+  <script src="app.js" defer></script>
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <span class="brand-mark" aria-hidden="true">▦</span>
+      <span class="brand-copy"><strong>WB Panel</strong><small>Визуальный редактор панелей</small></span>
+      <span class="version">v0.3</span>
+    </div>
+    <div class="topbar-actions">
+      <button type="button" class="toolbar-button" id="undoBtn" title="Отменить (Ctrl+Z)"><span data-icon="undo"></span><span class="optional-label">Назад</span></button>
+      <button type="button" class="toolbar-button" id="redoBtn" title="Повторить (Ctrl+Shift+Z)"><span data-icon="redo"></span><span class="optional-label">Вперёд</span></button>
+      <span class="toolbar-divider"></span>
+      <button type="button" class="toolbar-button" id="newBtn"><span data-icon="new"></span><span class="optional-label">Новый</span></button>
+      <button type="button" class="toolbar-button" id="importBtn"><span data-icon="upload"></span><span class="optional-label">Открыть</span></button>
+      <button type="button" class="toolbar-button" id="exportBtn"><span data-icon="download"></span><span>Скачать JSON</span></button>
+      <span class="toolbar-divider"></span>
+      <button type="button" class="mode-button" id="modeBtn"><span data-icon="eye"></span><span id="modeLabel">Просмотр</span></button>
+    </div>
+  </header>
+
+  <div class="workspace" id="workspace">
+    <aside class="sidebar sidebar-left" aria-label="Добавление элементов и структура">
+      <section class="panel-section">
+        <div class="section-heading"><h2>Элементы</h2><span class="help-icon" title="Перетащите элемент на страницу или в дерево; нажатие также добавляет элемент в выбранный контейнер">i</span></div>
+        <p class="hint">Перетащите элемент на холст или в дерево. Нажатие тоже добавляет его в выбранный контейнер.</p>
+        <div class="add-grid" id="addGrid">
+          <button type="button" class="add-tile" draggable="true" title="Перетащить на холст или в дерево" data-add="container"><span data-icon="container"></span>Контейнер</button>
+          <button type="button" class="add-tile" draggable="true" title="Перетащить на холст или в дерево" data-add="text"><span data-icon="text"></span>Текст</button>
+          <button type="button" class="add-tile" draggable="true" title="Перетащить на холст или в дерево" data-add="button"><span data-icon="button"></span>Кнопка</button>
+          <button type="button" class="add-tile" draggable="true" title="Перетащить на холст или в дерево" data-add="switch"><span data-icon="switch"></span>Переключатель</button>
+          <button type="button" class="add-tile" draggable="true" title="Перетащить на холст или в дерево" data-add="slider"><span data-icon="slider"></span>Ползунок</button>
+        </div>
+      </section>
+      <section class="panel-section templates-section">
+        <div class="section-heading"><h2>Мои шаблоны</h2><span class="muted tiny">Сохраняются локально</span></div>
+        <p class="hint template-hint">Выберите элемент и нажмите «Сохранить как шаблон» в его свойствах.</p>
+        <div id="templatesList" class="templates-list"></div>
+      </section>
+      <section class="panel-section tree-section">
+        <div class="section-heading"><h2>Структура страницы</h2><span class="muted tiny">Элементы панели</span></div>
+        <div class="tree" id="tree" aria-label="Дерево элементов"></div>
+        <p class="tree-hint">Перетаскивайте элементы: <b>над</b>, <b>внутрь</b> или <b>под</b> узлом.</p>
+      </section>
+      <div class="sidebar-footer"><span class="status-dot"></span><span id="saveStatus">Изменения сохраняются в браузере</span></div>
+    </aside>
+
+    <main class="work-area">
+      <div class="canvas-toolbar">
+        <div class="canvas-title"><span data-icon="layout"></span><span id="projectTitle">Моя панель</span><span class="breadcrumb-separator">/</span><span class="muted">Главная</span></div>
+        <div class="canvas-badge" id="canvasBadge">РЕДАКТИРОВАНИЕ</div>
+      </div>
+      <div class="canvas-scroller" id="canvasScroller">
+        <div class="canvas-stage">
+          <div class="canvas-frame" id="canvasFrame">
+            <div class="page-surface" id="canvas" aria-label="Холст панели управления"></div>
+          </div>
+          <div class="canvas-help" id="canvasHelp"><span data-icon="info"></span>Перетащите элементы слева на страницу. Нажмите на элемент для настройки.</div>
+          <div class="preview-notice" id="previewNotice" hidden><span data-icon="info"></span>Демонстрационный просмотр. MQTT пока не подключён.</div>
+        </div>
+      </div>
+    </main>
+
+    <aside class="sidebar sidebar-right" aria-label="Свойства элемента">
+      <div class="properties-head">
+        <div class="section-heading"><h2>Свойства</h2></div>
+        <div class="selected-title" id="selectedTitle"></div>
+        <div class="element-actions" id="elementActions">
+          <button type="button" class="icon-button" data-action="up" title="Переместить выше"><span data-icon="up"></span></button>
+          <button type="button" class="icon-button" data-action="down" title="Переместить ниже"><span data-icon="down"></span></button>
+          <button type="button" class="icon-button" data-action="duplicate" title="Дублировать рядом"><span data-icon="duplicate"></span></button>
+          <button type="button" class="icon-button" data-action="copy" title="Копировать (Ctrl+C)"><span data-icon="copy"></span></button>
+          <button type="button" class="icon-button" data-action="paste" title="Вставить (Ctrl+V)"><span data-icon="paste"></span></button>
+          <button type="button" class="icon-button" data-action="template" title="Сохранить как шаблон"><span data-icon="bookmark"></span></button>
+          <button type="button" class="icon-button danger" data-action="delete" title="Удалить"><span data-icon="trash"></span></button>
+        </div>
+      </div>
+      <div class="properties-body" id="properties"></div>
+    </aside>
+  </div>
+
+  <input type="file" id="importFile" accept=".json,application/json" hidden>
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+  <div class="floating-tip" id="floatingTip" role="tooltip" hidden></div>
+</body>
+</html>
