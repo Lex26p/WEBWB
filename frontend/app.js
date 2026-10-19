@@ -243,7 +243,7 @@
       list.innerHTML = '<p class="templates-empty">Пока нет шаблонов</p>';
       return;
     }
-    list.innerHTML = templates.map(t => `<div class="template-item" draggable="true" data-template="${esc(t.id)}" title="Перетащите на страницу или нажмите для добавления">
+    list.innerHTML = templates.map(t => `<div class="template-item" draggable="true" data-template="${esc(t.id)}" title="Перетащите на страницу или в дерево">
       <span class="template-icon">${svg(t.node.type)}</span><span class="template-name">${esc(t.name)}</span>
       <button class="template-delete" data-template-delete="${esc(t.id)}" type="button" title="Удалить шаблон">×</button></div>`).join('');
   }
@@ -541,22 +541,6 @@
     renderTree(); renderCanvas(); renderProperties();
   }
 
-  function addNode(type) {
-    const info = locate(selectedId);
-    if (!info || !ALLOWED_TYPES.has(type)) return;
-    const parent = info.node.type === 'container' ? info.node : info.parent;
-    if (!parent) return;
-    pushUndo();
-    const node = createNode(type);
-    if (parent.style.display === 'block') {
-      node.style.left = '16px'; node.style.top = `${16 + parent.children.length * 58}px`;
-    }
-    parent.children.push(node);
-    collapsed.delete(parent.id);
-    selectedId = node.id;
-    renderAll();
-    showToast(`${TYPE_NAMES[type]} добавлен`);
-  }
   function reseedIds(node) {
     node.id = uid();
     if (node.type === 'container') node.children.forEach(reseedIds);
@@ -800,8 +784,6 @@
       templates = templates.filter(t => t.id !== del.dataset.templateDelete);
       saveTemplates(); renderTemplates(); showToast('Шаблон удалён'); return;
     }
-    const item = e.target.closest('[data-template]');
-    if (item && insertAt(selectedInsertionPoint(),{kind:'template',id:item.dataset.template})) showToast('Шаблон добавлен');
   });
   $('#tree').addEventListener('dragstart',e => {
     const row = e.target.closest('[data-tree]');
@@ -817,10 +799,6 @@
   }
   document.addEventListener('dragend',resetDrag);
   document.addEventListener('drop',resetDrag);
-  $('#addGrid').addEventListener('click', e => {
-    const b = e.target.closest('[data-add]');
-    if (b) addNode(b.dataset.add);
-  });
   $('#tree').addEventListener('click', e => {
     const expander = e.target.closest('[data-expand]');
     if (expander) {
