@@ -1,5 +1,8 @@
 #include <boost/asio.hpp>
 #include <boost/beast.hpp>
+#include <json-c/json.h>
+
+#include "webwb/project_validation.hpp"
 
 #include <chrono>
 #include <cstddef>
@@ -27,7 +30,8 @@ void print_usage(const char* executable) {
               << "Usage: " << executable << " [--port 8088] [--data-dir PATH]\n"
               << "       " << executable << " --help\n"
               << "Server listens on 127.0.0.1 only.\n"
-              << "GET /api/health returns JSON.\n";
+              << "GET /api/health returns JSON.\n"
+              << "POST /api/projects/validate checks project JSON without saving.\n";
 }
 
 unsigned short parse_port(const std::string& text) {
@@ -70,9 +74,23 @@ http::response<http::string_body> make_response(const http::request<http::string
     if (request.target() == "/api/health" && request.method() == http::verb::get) {
         response.result(http::status::ok);
         response.body() = R"({"status":"ok","service":"webwb"})";
-    } else if (request.target() == "/api/health") {
+    } else if (request.target() == "/api/projects/validate" && request.method() == http::verb::post) {
+        const auto validation = webwb::validate_project(request.body());
+        response.result(validation.valid ? http::status::ok : http::status::bad_request);
+        if (validation.valid) {
+            response.body() = R"({"valid":true,"version":3})";
+        } else {
+            // Serialize the error using json-c to correctly escape diagnostic text.
+            json_object* json = json_object_new_object();
+            json_object_object_add(json, "valid", json_object_new_boolean(false));
+            json_object_object_add(json, "error", json_object_new_string("invalid_project"));
+            json_object_object_add(json, "detail", json_object_new_string(validation.message.c_str()));
+            response.body() = json_object_to_json_string_ext(json, JSON_C_TO_STRING_PLAIN);
+            json_object_put(json);
+        }
+    } else if (request.target() == "/api/projects/validate" || request.target() == "/api/health") {
         response.result(http::status::method_not_allowed);
-        response.set(http::field::allow, "GET");
+        response.set(http::field::allow, request.target() == "/api/health" ? "GET" : "POST");
         response.body() = R"({"error":"method_not_allowed"})";
     } else {
         response.result(http::status::not_found);
