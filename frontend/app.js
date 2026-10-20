@@ -1,216 +1,12 @@
-/* WB Panel: автономный прототип. Только HTML, CSS и JavaScript. */
+/* WB Panel — приложение, история, перетаскивание и события интерфейса. */
 (() => {
   'use strict';
-
-  const STORAGE_KEY = 'wb-panel-demo-v3';
-  const PREVIOUS_STORAGE_KEY = 'wb-panel-demo-v2';
-  const TEMPLATES_KEY = 'wb-panel-templates-v3';
-  const LEGACY_STORAGE_KEY = 'wb-panel-demo-v1';
-  const ALLOWED_TYPES = new Set(['container', 'text', 'button', 'switch', 'slider']);
-  const STYLE_KEYS = new Set([
-    'display', 'flexDirection', 'justifyContent', 'alignItems', 'flexWrap',
-    'width', 'height', 'backgroundColor', 'color', 'borderRadius',
-    'borderWidth', 'borderColor', 'fontSize', 'fontWeight', 'textAlign',
-    'paddingTop', 'paddingRight', 'paddingBottom', 'paddingLeft',
-    'marginTop', 'marginRight', 'marginBottom', 'marginLeft', 'left', 'top', 'position'
-  ]);
-  const TYPE_NAMES = {
-    container: 'Контейнер', text: 'Текст', button: 'Кнопка',
-    switch: 'Переключатель', slider: 'Ползунок'
-  };
-  const ICON_PATHS = {
-    container: '<rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 9v12"/>',
-    text: '<path d="M4 7V4h16v3M12 4v16M8 20h8"/>',
-    button: '<rect x="3" y="5" width="18" height="14" rx="4"/><path d="M9 12h6"/>',
-    switch: '<rect x="2" y="6" width="20" height="12" rx="6"/><circle cx="15.5" cy="12" r="4"/>',
-    slider: '<path d="M4 7h16M4 17h16"/><circle cx="9" cy="7" r="3" fill="white"/><circle cx="16" cy="17" r="3" fill="white"/>',
-    layout: '<rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 9v12"/>',
-    undo: '<path d="M3 7v5h5"/><path d="M3 12a9 9 0 1 1 3 6"/>',
-    redo: '<path d="M21 7v5h-5"/><path d="M21 12a9 9 0 1 0-3 6"/>',
-    upload: '<path d="M12 16V3m0 0L7 8m5-5 5 5"/><path d="M4 16v4h16v-4"/>',
-    download: '<path d="M12 3v13m0 0-5-5m5 5 5-5"/><path d="M4 17v4h16v-4"/>',
-    new: '<path d="M12 5v14M5 12h14"/>',
-    eye: '<path d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6-10-6-10-6Z"/><circle cx="12" cy="12" r="3"/>',
-    edit: '<path d="m16 4 4 4L9 19H5v-4L16 4Z"/><path d="M14 6l4 4"/>',
-    up: '<path d="M12 19V5m-6 6 6-6 6 6"/>',
-    down: '<path d="M12 5v14m-6-6 6 6 6-6"/>',
-    duplicate: '<rect x="3" y="5" width="12" height="12" rx="2"/><path d="M15 8h4a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2h-9a2 2 0 0 1-2-2v-2"/><path d="M9 9v5M6.5 11.5h5"/>',
-    bookmark: '<path d="M6 4a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v18l-6-4-6 4V4Z"/>',
-    paste: '<rect x="7" y="5" width="14" height="17" rx="2"/><path d="M9 5V3h10v2M3 7v12"/>',
-    copy: '<rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h3"/>',
-    trash: '<path d="M4 7h16m-10-3h4m-8 3 1 14h10l1-14M10 11v6m4-6v6"/>',
-    info: '<circle cx="12" cy="12" r="10"/><path d="M12 11v6m0-10h.01"/>'
-  };
-  const svg = (kind) => `<svg viewBox="0 0 24 24" aria-hidden="true">${ICON_PATHS[kind] || ICON_PATHS.container}</svg>`;
-  const $ = (selector) => document.querySelector(selector);
-  const esc = (v) => String(v ?? '').replace(/[&<>"']/g, (ch) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
-  const deepCopy = (value) => JSON.parse(JSON.stringify(value));
-  const uid = () => 'el_' + Math.random().toString(36).slice(2, 10);
-  const clamp = (n, min, max) => Math.min(max, Math.max(min, Number(n) || 0));
-
-  // Обычное скругление: 0–50px. Отдельный режим максимально круглых
-  // углов использует большой CSS-радиус: квадрат становится кругом,
-  // прямоугольник — капсулой, без эллиптических углов от процентов.
-  const FULL_RADIUS = '9999px';
-  function normalizeRadius(value) {
-    if (String(value).trim() === FULL_RADIUS) return FULL_RADIUS;
-    return Math.round(clamp(parseFloat(value) || 0, 0, 50)) + 'px';
-  }
-
-  function baseStyle() {
-    return {
-      width: 'auto', height: 'auto',
-      marginTop: '0px', marginRight: '0px', marginBottom: '0px', marginLeft: '0px',
-      paddingTop: '0px', paddingRight: '0px', paddingBottom: '0px', paddingLeft: '0px',
-      backgroundColor: 'transparent', borderWidth: '0px',
-      borderColor: '#d7e1ee', borderRadius: '0px'
-    };
-  }
-
-  function createNode(type) {
-    const common = {id: uid(), type, name: TYPE_NAMES[type], style: baseStyle()};
-    switch (type) {
-      case 'container':
-        return {...common, children: [], style: {...common.style,
-          display: 'flex', flexDirection: 'column', justifyContent: 'flex-start',
-          alignItems: 'stretch', width: '100%',
-          paddingTop: '18px', paddingRight: '18px', paddingBottom: '18px', paddingLeft: '18px',
-          backgroundColor: '#f4f7fc', borderRadius: '12px'
-        }};
-      case 'text':
-        return {...common, text: 'Новый текст', style: {...common.style,
-          fontSize: '16px', fontWeight: '400', color: '#243450', textAlign: 'left'
-        }};
-      case 'button':
-        return {...common, text: 'Нажать', style: {...common.style,
-          backgroundColor: '#3466e8', color: '#ffffff', borderRadius: '10px', fontSize: '14px'
-        }};
-      case 'switch':
-        return {...common, checked: false, style: {...common.style,
-          width: '43px', height: '25px'
-        }};
-      case 'slider':
-        return {...common, text: 'Уровень', value: 50, min: 0, max: 100, step: 1,
-          style: {...common.style, width: '100%', color: '#37455f', fontSize: '14px'
-        }};
-    }
-    throw Error('Неизвестный элемент');
-  }
-
-  function setSpacing(node, kind, top, right = top, bottom = top, left = right) {
-    for (const [side, val] of Object.entries({Top:top, Right:right, Bottom:bottom, Left:left})) {
-      node.style[kind + side] = String(val) + 'px';
-    }
-  }
-
-  function createDemo() {
-    const page = createNode('container');
-    page.id = 'page'; page.name = 'Страница';
-    Object.assign(page.style, { backgroundColor: '#ffffff', borderRadius: '0px' });
-    setSpacing(page, 'padding', 34);
-    const heading = createNode('text'); heading.name = 'Заголовок'; heading.text = 'Панель управления';
-    Object.assign(heading.style, {fontSize:'29px',fontWeight:'700',color:'#1b2942'});
-    setSpacing(heading,'margin',0,0,15,0);
-    const subheading = createNode('text'); subheading.name = 'Описание';
-    subheading.text = 'Пример панели из контейнеров, кнопок и простых элементов.';
-    Object.assign(subheading.style, {fontSize:'13px',color:'#8190a5'});
-    setSpacing(subheading, 'margin', 0,0,25,0);
-    const row = createNode('container'); row.name = 'Карточки';
-    Object.assign(row.style, {flexDirection:'row',alignItems:'stretch',paddingTop:'0px',paddingRight:'0px',paddingBottom:'0px',paddingLeft:'0px',backgroundColor:'transparent'});
-    const card1 = createNode('container'); card1.name = 'Освещение';
-    Object.assign(card1.style, {width:'48%',backgroundColor:'#f2f6ff',borderRadius:'16px'});
-    setSpacing(card1,'padding',23);
-    setSpacing(card1,'margin',0,15,0,0);
-    const t1 = createNode('text'); t1.text = 'Освещение'; t1.name='Название';
-    Object.assign(t1.style, {fontWeight:'700',fontSize:'19px'});
-    setSpacing(t1,'margin',0,0,17,0);
-    const t2 = createNode('text'); t2.text = 'Гостиная · основной свет'; t2.name='Описание';
-    Object.assign(t2.style, {fontSize:'13px',color:'#8695ae'});
-    setSpacing(t2,'margin',0,0,18,0);
-    const b = createNode('button'); b.text = 'Включить свет'; b.name = 'Кнопка света';
-    Object.assign(b.style, {width:'170px'});
-    card1.children.push(t1, t2, b);
-    const card2 = createNode('container'); card2.name='Климат';
-    Object.assign(card2.style, {width:'48%',backgroundColor:'#f2f6ff',borderRadius:'16px'});
-    setSpacing(card2,'padding',23);
-    const t3 = createNode('text'); t3.text = 'Климат'; t3.name='Название';
-    Object.assign(t3.style, {fontWeight:'700',fontSize:'19px'});
-    setSpacing(t3,'margin',0,0,17,0);
-    const swLabel = createNode('text'); swLabel.name='Подпись вентиляции'; swLabel.text='Вентиляция';
-    Object.assign(swLabel.style,{fontSize:'13px', color:'#687991'});
-    setSpacing(swLabel,'margin',0,0,7,0);
-    const sw = createNode('switch'); sw.name='Переключатель вентиляции'; sw.checked=true;
-    setSpacing(sw,'margin',0,0,14,0);
-    const sl = createNode('slider'); sl.text='Мощность'; sl.name='Мощность'; sl.value=45;
-    card2.children.push(t3, swLabel, sw, sl);
-    row.children.push(card1,card2);
-    page.children.push(heading,subheading,row);
-    return { version: 3, title: 'Моя панель', root: page };
-  }
-
-  // Импорт ограничен небольшим поддерживаемым набором элементов и CSS-свойств.
-  function normalizeProject(parsed) {
-    if (!parsed || typeof parsed !== 'object' || !parsed.root) throw Error('Нет корневого контейнера');
-    let count = 0;
-    const ids = new Set();
-    const legacy = Number(parsed.version) < 2;
-    const normalizeNode = (source, depth = 0) => {
-      if (!source || typeof source !== 'object' || !ALLOWED_TYPES.has(source.type)) throw Error('Неизвестный тип элемента');
-      if (depth > 20 || ++count > 400) throw Error('Слишком большой проект');
-      const node = createNode(source.type);
-      const sourceId = typeof source.id === 'string' && /^[\w-]{1,80}$/.test(source.id) ? source.id : uid();
-      node.id = ids.has(sourceId) ? uid() : sourceId;
-      ids.add(node.id);
-      node.name = typeof source.name === 'string' ? source.name.slice(0, 150) : node.name;
-      if ('text' in node) node.text = typeof source.text === 'string' ? source.text.slice(0, 10000) : node.text;
-      if (node.type === 'switch') node.checked = !!source.checked;
-      if (node.type === 'slider') {
-        node.min = clamp(source.min ?? 0, -10000, 10000);
-        node.max = clamp(source.max ?? 100, node.min + 1, 10001);
-        node.step = clamp(source.step ?? 1, 1, 10000);
-        node.value = clamp(source.value ?? 50, node.min, node.max);
-      }
-      if (source.style && typeof source.style === 'object' && !Array.isArray(source.style)) {
-        for (const [k, v] of Object.entries(source.style)) {
-          if (STYLE_KEYS.has(k) && (typeof v === 'string' || typeof v === 'number') && String(v).length <= 120) {
-            node.style[k] = String(v);
-          }
-        }
-        // Единый формат для новых и прежних проектов: только px.
-        node.style.borderRadius = normalizeRadius(node.style.borderRadius);
-        if (legacy) {
-          for (const kind of ['margin','padding']) {
-            const raw = source.style[kind];
-            if (typeof raw !== 'string' || !/^\d+(?:\.\d+)?px$/.test(raw)) continue;
-            for (const side of ['Top','Right','Bottom','Left']) node.style[kind + side] = raw;
-          }
-        }
-      }
-      if (node.type === 'container') {
-        node.children = (Array.isArray(source.children) ? source.children : []).map(ch => normalizeNode(ch, depth + 1));
-        // Старые проекты с gap открываются без потери промежутков между элементами.
-        if (legacy && source.style && /^\d+(?:\.\d+)?px$/.test(source.style.gap || '')) {
-          const gap = parseFloat(source.style.gap);
-          const side = node.style.flexDirection === 'row' ? 'marginRight' : 'marginBottom';
-          node.children.slice(0,-1).forEach(child => {
-            child.style[side] = (parseFloat(child.style[side]) + gap) + 'px';
-          });
-        }
-      }
-      return node;
-    };
-    if (parsed.root.type !== 'container') throw Error('Корнем проекта должен быть контейнер');
-    return {version: 3, title: typeof parsed.title === 'string' ? parsed.title.slice(0,120) : 'Моя панель', root: normalizeNode(parsed.root)};
-  }
-
-  function loadInitialProject() {
-    try {
-      const raw = localStorage.getItem(STORAGE_KEY) || localStorage.getItem(PREVIOUS_STORAGE_KEY) || localStorage.getItem(LEGACY_STORAGE_KEY);
-      if (raw) return normalizeProject(JSON.parse(raw));
-    } catch (error) { console.warn('Не удалось прочитать сохранённый проект:', error); }
-    return createDemo();
-  }
-
+  const {
+    STORAGE_KEY, TEMPLATES_KEY, ALLOWED_TYPES, TYPE_NAMES,
+    $, esc, svg, deepCopy, uid, clamp, createNode, createDemo,
+    loadInitialProject, normalizeProject, loadTemplates,
+    validateSnippet, nodeCount, nodeHeight, containsNode
+  } = window.WBPanelModel;
   let project = loadInitialProject();
   let selectedId = project.root.id;
   let preview = false;
@@ -227,39 +23,10 @@
     try { localStorage.setItem(STORAGE_KEY, JSON.stringify(project)); }
     catch (e) { $('#saveStatus').textContent = 'Не удалось сохранить в браузере'; }
   }
-  function loadTemplates() {
-    try {
-      const data = JSON.parse(localStorage.getItem(TEMPLATES_KEY) || '[]');
-      if (!Array.isArray(data)) return [];
-      return data.slice(0, 30).flatMap(item => {
-        try {
-          if (!item || typeof item.name !== 'string') return [];
-          return [{id: String(item.id).slice(0,80), name:item.name.slice(0,80), node: validateSnippet(item.node)}];
-        } catch { return []; }
-      });
-    } catch { return []; }
-  }
   function saveTemplates() {
     try { localStorage.setItem(TEMPLATES_KEY, JSON.stringify(templates)); }
     catch { showToast('Не удалось сохранить шаблоны в браузере'); }
   }
-  function validateSnippet(node) {
-    const root = createNode('container');
-    root.children = [node];
-    return normalizeProject({version:3, root}).root.children[0];
-  }
-  function renderTemplates() {
-    const list = $('#templatesList');
-    if (!templates.length) {
-      list.innerHTML = '<p class="templates-empty">Пока нет шаблонов</p>';
-      return;
-    }
-    list.innerHTML = templates.map(t => `<div class="template-item" draggable="true" data-template="${esc(t.id)}" title="Перетащите на страницу или в дерево">
-      <span class="template-icon">${svg(t.node.type)}</span><span class="template-name">${esc(t.name)}</span>
-      <button class="template-delete" data-template-delete="${esc(t.id)}" type="button" title="Удалить шаблон">×</button></div>`).join('');
-  }
-  function nodeCount(node) { return 1 + (node.type === 'container' ? node.children.reduce((n,c) => n + nodeCount(c), 0) : 0); }
-  function nodeHeight(node) { return node.type === 'container' ? 1 + Math.max(0,...node.children.map(nodeHeight)) : 1; }
   function ancestorDepth(id, node = project.root, depth = 0) {
     if (node.id === id) return depth;
     if (node.type !== 'container') return -1;
@@ -268,9 +35,6 @@
       if (result !== -1) return result;
     }
     return -1;
-  }
-  function containsNode(node,id) {
-    return node.id === id || (node.type === 'container' && node.children.some(ch => containsNode(ch,id)));
   }
   function locate(id, node = project.root, parent = null) {
     if (node.id === id) return { node, parent, index: parent ? parent.children.indexOf(node) : -1 };
@@ -309,230 +73,6 @@
     clearTimeout(toastTimer);
     toastTimer = setTimeout(() => toast.classList.remove('show'), 2600);
   }
-  function renderIcons() {
-    document.querySelectorAll('[data-icon]').forEach(el => el.innerHTML = svg(el.dataset.icon));
-  }
-
-  function renderTree() {
-    function row(node, depth) {
-      const children = node.type === 'container' ? node.children : null;
-      const isCollapsed = collapsed.has(node.id);
-      const indent = '<span class="tree-indent"></span>'.repeat(depth);
-      const toggle = children ? `<button type="button" class="tree-expander" data-expand="${esc(node.id)}" aria-label="Свернуть или раскрыть">${isCollapsed ? '▸' : '▾'}</button>` : '<span class="tree-expander"></span>';
-      const item = `<div class="tree-row ${selectedId === node.id ? 'selected' : ''}" draggable="${node.id !== project.root.id}" data-tree="${esc(node.id)}">${indent}${toggle}<span class="tree-icon">${svg(node.type)}</span><span class="tree-label" title="${esc(node.name)}">${esc(node.name)}</span></div>`;
-      return item + (!isCollapsed && children ? children.map(c => row(c, depth + 1)).join('') : '');
-    }
-    $('#tree').innerHTML = row(project.root, 0);
-  }
-
-  function applyNodeStyle(el, node, parent, index) {
-    const style = node.style || {};
-    for (const [key, value] of Object.entries(style)) {
-      if (!STYLE_KEYS.has(key) || ['borderWidth','borderColor','position','left','top'].includes(key)) continue;
-      el.style[key] = String(value);
-    }
-    if (style.borderWidth && parseFloat(style.borderWidth) > 0) {
-      el.style.border = `${parseFloat(style.borderWidth)}px solid ${style.borderColor || '#d7e1ee'}`;
-    }
-    if (parent && parent.style.display === 'block') {
-      el.style.position = 'absolute';
-      el.style.left = style.left || '16px';
-      el.style.top = style.top || `${16 + index * 58}px`;
-    } else if (node.type === 'container' && style.display === 'block') {
-      el.style.position = 'relative';
-      el.classList.add('free-container');
-    }
-  }
-
-  function createElement(node, parent = null, index = 0) {
-    let el;
-    if (node.type === 'button') {
-      el = document.createElement('button'); el.type = 'button';
-      el.className = 'node wb-button'; el.textContent = node.text;
-      if (!preview) el.tabIndex = -1;
-      else el.addEventListener('click', () => {
-        el.classList.toggle('is-active');
-        showToast('Демонстрация: команда MQTT не отправлялась');
-      });
-    } else if (node.type === 'switch') {
-      el = document.createElement('label'); el.className = 'node wb-switch';
-      el.setAttribute('aria-label', node.name || 'Переключатель');
-      const checkbox = document.createElement('input'); checkbox.type = 'checkbox';
-      checkbox.checked = !!node.checked; checkbox.disabled = !preview;
-      const toggle = document.createElement('span'); toggle.className = 'switch-ui';
-      el.append(checkbox, toggle);
-    } else if (node.type === 'slider') {
-      el = document.createElement('div'); el.className = 'node wb-slider';
-      const caption = document.createElement('div'); caption.className = 'slider-caption';
-      const label = document.createElement('span'); label.textContent = node.text;
-      const value = document.createElement('span'); value.className = 'slider-value'; value.textContent = String(node.value);
-      caption.append(label, value);
-      const slider = document.createElement('input'); slider.type = 'range'; slider.min = String(node.min ?? 0); slider.max = String(node.max ?? 100); slider.step = String(node.step ?? 1); slider.value = String(node.value);
-      slider.disabled = !preview;
-      slider.addEventListener('input', () => { value.textContent = slider.value; });
-      el.append(caption, slider);
-    } else if (node.type === 'text') {
-      el = document.createElement('div'); el.className = 'node node-text'; el.textContent = node.text;
-    } else {
-      el = document.createElement('div'); el.className = 'node node-container';
-      node.children.forEach((child, idx) => el.appendChild(createElement(child, node, idx)));
-      if (!preview && node.children.length === 0) el.classList.add('empty-container');
-    }
-    el.dataset.nodeId = node.id;
-    if (!preview && node.id === selectedId) el.classList.add('selected-node');
-    applyNodeStyle(el, node, parent, index);
-    return el;
-  }
-
-  function renderCanvas() {
-    const canvas = $('#canvas');
-    canvas.className = preview ? 'page-surface canvas-preview' : 'page-surface canvas-edit';
-    canvas.replaceChildren(createElement(project.root));
-  }
-
-  const TIPS = {
-    name: 'Название для списка элементов слева. На самой панели оно не отображается.',
-    width: 'Ширина элемента: автоматически, в пикселях или в процентах от ширины родителя.',
-    height: 'Высота элемента: автоматически, в пикселях или в процентах от высоты родителя.',
-    margin: 'Внешнее расстояние от элемента до соседних элементов. Можно настроить каждую сторону.',
-    padding: 'Расстояние от краёв элемента до его содержимого. Можно настроить каждую сторону.',
-    background: 'Цвет фона. Вариант «Прозрачный» убирает заливку.',
-    borderWidth: 'Толщина рамки по периметру элемента. Значение 0 отключает рамку.',
-    borderColor: 'Цвет рамки. Видно, если толщина рамки больше нуля.',
-    borderRadius: 'Обычное скругление — от 0 до 50 px. Режим «Полное скругление» делает квадрат кругом, а прямоугольник капсулой независимо от размеров.',
-    x: 'Горизонтальная координата относительно свободного контейнера.',
-    y: 'Вертикальная координата относительно свободного контейнера.',
-    layout: 'Как располагать элементы внутри контейнера: сверху вниз, слева направо либо в заданных координатах.',
-    alignX: 'Как выравнивать элементы по горизонтали: слева, по центру, справа. В некоторых режимах — растянуть или распределить по краям.',
-    alignY: 'Как выравнивать элементы по вертикали: сверху, по центру, снизу. В некоторых режимах — растянуть или распределить по краям.',
-    text: 'Надпись, которую увидит пользователь на панели.',
-    fontSize: 'Размер букв в пикселях.',
-    color: 'Цвет текста или подписи элемента.',
-    fontWeight: 'Толщина букв: обычные или жирные.',
-    textAlign: 'Расположение текста внутри отведённой области.',
-    checked: 'Состояние переключателя при открытии демонстрационного просмотра.',
-    sliderMin: 'Самое маленькое значение ползунка.',
-    sliderMax: 'Самое большое значение ползунка.',
-    sliderStep: 'На сколько меняется значение за одно перемещение.',
-    sliderValue: 'Положение ползунка при открытии демонстрационного просмотра.'
-  };
-  function help(label, tip) {
-    return `<button type="button" class="help-button" data-help="${esc(tip)}" aria-label="Подсказка: ${esc(label)}">i</button>`;
-  }
-  function field(label, prop, value, opts = {}) {
-    const type = opts.type || 'text';
-    const id = 'prop-' + prop.replace(/[^a-zA-Z0-9_-]/g,'-');
-    let control;
-    if (type === 'select') {
-      control = `<select id="${id}" class="field-select" data-prop="${esc(prop)}">${opts.options.map(([v,n]) => `<option value="${esc(v)}" ${String(value) === String(v) ? 'selected' : ''}>${esc(n)}</option>`).join('')}</select>`;
-    } else if (type === 'textarea') {
-      control = `<textarea id="${id}" class="field-textarea" data-prop="${esc(prop)}">${esc(value)}</textarea>`;
-    } else if (type === 'checkbox') {
-      control = `<label class="checkbox-field"><input id="${id}" type="checkbox" data-prop="${esc(prop)}" ${value ? 'checked' : ''}> Включено</label>`;
-    } else if (type === 'color') {
-      const color = /^#[a-f\d]{6}$/i.test(String(value)) ? value : '#ffffff';
-      control = `<div class="color-control"><input id="${id}" type="color" data-prop="${esc(prop)}" value="${esc(color)}" aria-label="${esc(label)}"><span class="color-value">${esc(color.toUpperCase())}</span></div>`;
-    } else {
-      control = `<input id="${id}" class="field-input" data-prop="${esc(prop)}" type="${type}" value="${esc(value)}" ${type === 'number' ? `step="${opts.step || '1'}" ${opts.signed ? '' : 'min="0"'} max="99999"` : ''}>`;
-    }
-    return `<div class="field"><div class="field-heading"><label class="field-label" for="${id}">${esc(label)}</label>${help(label,opts.tip || '')}</div>${control}</div>`;
-  }
-  const expandedGroups = new Set(['Основное','Размеры','Контейнер','Текст','Кнопка','Переключатель','Ползунок']);
-  const section = (label, content) => `<details class="prop-section" data-group="${esc(label)}" ${expandedGroups.has(label) ? 'open' : ''}><summary>${esc(label)}</summary><div class="prop-section-content">${content}</div></details>`;
-  function sizeField(label, key, raw) {
-    const parsed = /^([0-9]+(?:\.[0-9]+)?)(px|%)$/.exec(String(raw));
-    const unit = parsed ? parsed[2] : 'auto';
-    const number = parsed ? parsed[1] : '';
-    return `<div class="field"><div class="field-heading"><span class="field-label">${esc(label)}</span>${help(label,TIPS[key])}</div><div class="size-control"><input class="field-input" type="number" step="1" min="0" max="99999" value="${esc(number)}" aria-label="${esc(label)} — число" data-size-number="style.${esc(key)}" ${unit === 'auto' ? 'disabled' : ''}><select class="field-select" data-size-unit="style.${esc(key)}" aria-label="${esc(label)} — единица">${[['auto','Авто'],['px','px'],['%','%']].map(([v,n]) => `<option value="${v}" ${unit === v ? 'selected' : ''}>${n}</option>`).join('')}</select></div></div>`;
-  }
-  function radiusField(raw) {
-    const full = normalizeRadius(raw) === FULL_RADIUS;
-    const value = full ? 50 : parseInt(normalizeRadius(raw), 10);
-    return `<div class="field"><div class="field-heading"><label class="field-label" for="radiusRange">Скругление</label>${help('Скругление',TIPS.borderRadius)}</div>
-      <div class="radius-row"><input id="radiusRange" class="radius-range" data-prop="style.borderRadius" type="range" min="0" max="50" step="1" value="${value}" ${full ? 'disabled' : ''}>
-      <output class="radius-value" for="radiusRange">${full ? 'Макс.' : value + 'px'}</output></div>
-      <label class="checkbox-field transparent-switch"><input type="checkbox" data-prop="radiusFull" ${full ? 'checked' : ''}> Полное скругление</label></div>`;
-  }
-  function spacingFields(kind,label) {
-    const node = locate(selectedId).node;
-    const sides = [['Top','Верх'],['Right','Право'],['Bottom','Низ'],['Left','Лево']];
-    const controls = sides.map(([side,sideLabel]) => {
-      const prop = 'style.' + kind + side;
-      const v = parseFloat(node.style[kind + side] || '0') || 0;
-      return `<label class="spacing-cell"><span>${sideLabel}</span><input class="field-input" type="number" min="0" max="9999" data-prop="${prop}" value="${v}" aria-label="${esc(label)}: ${sideLabel.toLowerCase()}"></label>`;
-    }).join('');
-    return `<div class="field"><div class="field-heading"><span class="field-label">${esc(label)}</span>${help(label,TIPS[kind])}</div><div class="spacing-grid">${controls}</div></div>`;
-  }
-  function backgroundField(value) {
-    const transparent = !value || value === 'transparent';
-    const color = /^#[a-f\d]{6}$/i.test(String(value)) ? String(value) : '#ffffff';
-    return `<div class="field"><div class="field-heading"><label class="field-label" for="bgColor">Цвет фона</label>${help('Цвет фона',TIPS.background)}</div><div class="color-control"><input type="color" id="bgColor" data-prop="style.backgroundColor" value="${esc(color)}" ${transparent ? 'disabled' : ''}><span class="color-value">${esc(transparent ? 'Без заливки' : color.toUpperCase())}</span></div><label class="checkbox-field transparent-switch"><input type="checkbox" data-bg-transparent="1" ${transparent ? 'checked' : ''}> Прозрачный фон</label></div>`;
-  }
-  const layoutOptions = [['column','Вертикально'],['row','Горизонтально'],['free','Свободно']];
-  const justifyXOptions = [['flex-start','Слева'],['center','Центр'],['flex-end','Справа'],['space-between','По краям']];
-  const alignXOptions = [['flex-start','Слева'],['center','Центр'],['flex-end','Справа'],['stretch','Растянуть']];
-  const justifyYOptions = [['flex-start','Сверху'],['center','Центр'],['flex-end','Снизу'],['space-between','По краям']];
-  const alignYOptions = [['flex-start','Сверху'],['center','Центр'],['flex-end','Снизу'],['stretch','Растянуть']];
-  function currentLayout(node) { return node.style.display === 'block' ? 'free' : node.style.flexDirection === 'row' ? 'row' : 'column'; }
-
-  function renderProperties() {
-    const info = locate(selectedId);
-    if (!info) return;
-    const {node,parent,index} = info;
-    $('#selectedTitle').innerHTML = `${svg(node.type)}<span>${esc(node.name)}</span>`;
-    const isRoot = !parent;
-    const parentIsFree = !!parent && parent.style.display === 'block';
-    $('#elementActions').querySelectorAll('[data-action]').forEach(b => {
-      const a = b.dataset.action;
-      b.disabled = (isRoot && ['up','down','duplicate','delete'].includes(a)) || (a === 'paste' && !clipboardNode) || (!isRoot && a === 'up' && index <= 0) || (!isRoot && a === 'down' && index === parent.children.length - 1);
-    });
-    let html = section('Основное', field('Название в структуре','name',node.name,{tip:TIPS.name}));
-    html += section('Размеры', sizeField('Ширина','width',node.style.width || 'auto') + sizeField('Высота','height',node.style.height || 'auto'));
-    html += section('Отступы', spacingFields('margin','Внешние') + spacingFields('padding','Внутренние'));
-    html += section('Фон', backgroundField(node.style.backgroundColor));
-    html += section('Граница',
-      field('Толщина, px','style.borderWidth',parseFloat(node.style.borderWidth) || 0,{type:'number',tip:TIPS.borderWidth}) +
-      field('Цвет границы','style.borderColor',node.style.borderColor || '#d7e1ee',{type:'color',tip:TIPS.borderColor}) +
-      radiusField(node.style.borderRadius || '0px'));
-    if (parentIsFree) {
-      html += section('Положение', `<div class="field-row">${field('Координата X, px','style.left',Number.parseFloat(node.style.left ?? '16'),{type:'number',signed:true,tip:TIPS.x})}${field('Координата Y, px','style.top',Number.parseFloat(node.style.top ?? String(16 + index*58)),{type:'number',signed:true,tip:TIPS.y})}</div>`);
-    }
-    if (node.type === 'container') {
-      const layout = currentLayout(node);
-      let specific = field('Позиционирование','layoutMode',layout,{type:'select',options:layoutOptions,tip:TIPS.layout});
-      if (layout !== 'free') {
-        const horiz = layout === 'row';
-        const xProp = horiz ? 'style.justifyContent' : 'style.alignItems';
-        const yProp = horiz ? 'style.alignItems' : 'style.justifyContent';
-        const xOptions = horiz ? justifyXOptions : alignXOptions;
-        const yOptions = horiz ? alignYOptions : justifyYOptions;
-        specific += `<div class="field-row">${field('По оси X',xProp,node.style[xProp.slice(6)] || 'flex-start',{type:'select',options:xOptions,tip:TIPS.alignX})}${field('По оси Y',yProp,node.style[yProp.slice(6)] || 'flex-start',{type:'select',options:yOptions,tip:TIPS.alignY})}</div>`;
-      } else {
-        specific += '<p class="field-note">Во вложенных элементах появятся координаты X и Y.</p>';
-      }
-      html += section('Контейнер',specific);
-    } else {
-      let specific = '';
-      if (node.type === 'text' || node.type === 'button' || node.type === 'slider') {
-        specific = field(node.type === 'text' ? 'Содержимое' : 'Подпись','text',node.text,{type:node.type === 'text' ? 'textarea' : 'text',tip:TIPS.text});
-      }
-      if (node.type === 'text' || node.type === 'button' || node.type === 'slider') {
-        specific += `<div class="field-row">${field('Размер шрифта, px','style.fontSize',parseFloat(node.style.fontSize) || 14,{type:'number',tip:TIPS.fontSize})}${field('Цвет текста','style.color',node.style.color || '#243450',{type:'color',tip:TIPS.color})}</div>`;
-      }
-      if (node.type === 'text') {
-        specific += field('Начертание','style.fontWeight',node.style.fontWeight || '400',{type:'select',options:[['400','Обычное'],['700','Жирное']],tip:TIPS.fontWeight});
-        specific += field('Выравнивание текста','style.textAlign',node.style.textAlign || 'left',{type:'select',options:[['left','Слева'],['center','По центру'],['right','Справа']],tip:TIPS.textAlign});
-      } else if (node.type === 'switch') {
-        specific += field('Начальное состояние','checked',node.checked,{type:'checkbox',tip:TIPS.checked});
-      } else if (node.type === 'slider') {
-        specific += `<div class="field-row">${field('Минимум','min',node.min ?? 0,{type:'number',signed:true,tip:TIPS.sliderMin})}${field('Максимум','max',node.max ?? 100,{type:'number',signed:true,tip:TIPS.sliderMax})}</div>`;
-        specific += `<div class="field-row">${field('Шаг','step',node.step ?? 1,{type:'number',tip:TIPS.sliderStep})}${field('Начальное значение','value',node.value ?? 50,{type:'number',signed:true,tip:TIPS.sliderValue})}</div>`;
-      }
-      html += section(TYPE_NAMES[node.type],specific);
-    }
-    $('#properties').innerHTML = html;
-  }
-
   function refreshTop() {
     $('#projectTitle').textContent = project.title;
     $('#undoBtn').disabled = undoStack.length === 0;
@@ -727,63 +267,23 @@
     }
   }
 
-  function updateProperty(target) {
-    const path = target.dataset.prop || target.dataset.sizeUnit || target.dataset.sizeNumber;
-    if (!path && !target.dataset.bgTransparent) return;
-    const info = locate(selectedId);
-    if (!info) return;
-    const node = info.node;
-    const value = target.type === 'checkbox' ? target.checked : target.value;
-    if (target.dataset.bgTransparent) {
-      node.style.backgroundColor = value ? 'transparent' : '#ffffff';
-    } else if (target.dataset.sizeUnit) {
-      const control = target.closest('.size-control').querySelector('[data-size-number]');
-      if (value === 'auto') node.style[path.slice(6)] = 'auto';
-      else node.style[path.slice(6)] = `${clamp(control.value || 100, 0, 99999)}${value}`;
-    } else if (target.dataset.sizeNumber) {
-      const unit = target.closest('.size-control').querySelector('[data-size-unit]').value;
-      node.style[path.slice(6)] = unit === 'auto' ? 'auto' : `${clamp(value,0,99999)}${unit}`;
-    } else if (path === 'radiusFull') {
-      // При выключении полного скругления возвращаемся к верхней
-      // границе обычной шкалы; пользователь может уменьшить её ползунком.
-      node.style.borderRadius = value ? FULL_RADIUS : '50px';
-    } else if (path === 'layoutMode') {
-      if (value === 'free') {
-        node.style.display = 'block'; node.style.position = 'relative';
-      } else {
-        node.style.display = 'flex'; node.style.position = 'static'; node.style.flexDirection = value;
-        if (!node.style.justifyContent) node.style.justifyContent = 'flex-start';
-        if (!node.style.alignItems) node.style.alignItems = 'stretch';
-      }
-    } else if (path.startsWith('style.')) {
-      const key = path.slice(6);
-      if (!STYLE_KEYS.has(key)) return;
-      if (['borderWidth','fontSize','left','top',
-        'paddingTop','paddingRight','paddingBottom','paddingLeft',
-        'marginTop','marginRight','marginBottom','marginLeft'].includes(key)) {
-        const min = ['left','top'].includes(key) ? -9999 : 0;
-        node.style[key] = clamp(value, min, 99999) + 'px';
-      } else if (key === 'borderRadius') {
-        node.style[key] = normalizeRadius(value);
-        const label = target.closest('.radius-row')?.querySelector('.radius-value');
-        if (label) label.textContent = node.style[key];
-      } else {
-        node.style[key] = value;
-      }
-    } else if (path === 'name' || path === 'text') {
-      node[path] = String(value).slice(0,10000);
-    } else if (path === 'checked') {
-      node.checked = !!value;
-    } else if (node.type === 'slider' && ['value','min','max','step'].includes(path)) {
-      node[path] = clamp(value, path === 'step' ? 1 : -10000, 10000);
-      if (node.max <= node.min) node.max = node.min + 1;
-      node.value = clamp(node.value,node.min,node.max);
-    }
-    renderCanvas(); renderTree();
-    $('#selectedTitle').innerHTML = `${svg(node.type)}<span>${esc(node.name)}</span>`;
-    saveLocal();
-  }
 
+  // Передаём модулям ссылки на текущее состояние, не копируя проект:
+  // при импорте, отмене или новом проекте объект project заменяется.
+  const state = {
+    get project() { return project; },
+    get selectedId() { return selectedId; },
+    get preview() { return preview; },
+    get templates() { return templates; },
+    get clipboardNode() { return clipboardNode; }
+  };
+  const ctx = { state, collapsed, locate, saveLocal, showToast };
+  const view = window.WBPanelCreateView(ctx);
+  Object.assign(ctx, view);
+  const properties = window.WBPanelCreateProperties(ctx);
+  Object.assign(ctx, properties);
+  const { renderTemplates, renderIcons, renderTree, renderCanvas } = view;
+  const { renderProperties, updateProperty, expandedGroups } = properties;
   $('#addGrid').addEventListener('dragstart',e => {
     const tile = e.target.closest('[data-add]');
     if (tile) dragStart(e,{kind:'new',type:tile.dataset.add});
