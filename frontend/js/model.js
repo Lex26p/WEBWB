@@ -169,6 +169,17 @@
       if (node.type === 'image') {
         node.src = typeof source.src === 'string' && /^\/api\/uploads\/[a-f0-9]{32}$/.test(source.src) ? source.src : '';
       }
+      if (['text', 'button', 'switch', 'slider'].includes(node.type) &&
+          source.mqtt && typeof source.mqtt === 'object') {
+        const topic = source.mqtt.statusTopic;
+        const active = source.mqtt.activeValue;
+        if (typeof topic === 'string' && topic.length > 0 &&
+            new TextEncoder().encode(topic).length <= 256 && !/[\u0000+#]/.test(topic)) {
+          node.mqtt = {statusTopic: topic};
+          if (['button', 'switch'].includes(node.type))
+            node.mqtt.activeValue = typeof active === 'string' ? active.slice(0, 120) : '1';
+        }
+      }
       if (node.type === 'slider') {
         node.min = clamp(source.min ?? 0, -10000, 10000);
         node.max = clamp(source.max ?? 100, node.min + 1, 10001);

@@ -65,6 +65,10 @@ def main():
             code, viewer_js = request(port, 'GET', '/viewer.js')
             check(code == 200 and b'WBPanelAPI.load' in viewer_js,
                   'Просмотр загружает проект через API')
+            check(b'WBPanelMQTT' in viewer_js, 'Просмотр подключает клиент MQTT-статусов')
+            code, mqtt_js = request(port, 'GET', '/js/mqtt_reader.js')
+            check(code == 200 and b'WBPanelMQTT' in mqtt_js,
+                  'MQTT-клиент доступен через HTTP')
             code, renderer_js = request(port, 'GET', '/js/renderer.js')
             check(code == 200 and b'WBPanelRenderer' in renderer_js,
                   'Общий рендерер доступен редактору и просмотру')

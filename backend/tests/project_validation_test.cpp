@@ -49,6 +49,11 @@ int main() {
     expect("valid Cyrillic text", project_with_root(R"({"id":"a","type":"container","name":"Страница","style":{},"children":[]})"), true);
     expect("invalid slider range", project_with_root(R"({"id":"a","type":"container","name":"x","style":{},"children":[{"id":"b","type":"slider","name":"x","text":"x","style":{},"min":0,"max":100,"step":1,"value":101}]})"), false);
     expect("unexpected children on leaf", project_with_root(R"({"id":"a","type":"text","name":"x","style":{},"text":"Hi","children":[]})"), false);
+    expect("valid mqtt text binding", project_with_root(R"({"id":"r","type":"container","name":"x","style":{},"children":[{"id":"t","type":"text","name":"x","style":{},"text":"Temp","mqtt":{"statusTopic":"/devices/demo/controls/Temp"}}]})"), true);
+    expect("valid mqtt switch binding", project_with_root(R"({"id":"r","type":"container","name":"x","style":{},"children":[{"id":"t","type":"switch","name":"x","style":{},"checked":false,"mqtt":{"statusTopic":"/devices/demo/controls/State","activeValue":"1"}}]})"), true);
+    expect("reject wildcard topic", project_with_root(R"({"id":"r","type":"container","name":"x","style":{},"children":[{"id":"t","type":"text","name":"x","style":{},"text":"Hi","mqtt":{"statusTopic":"/devices/#"}}]})"), false);
+    expect("reject mqtt publish property", project_with_root(R"({"id":"r","type":"container","name":"x","style":{},"children":[{"id":"t","type":"text","name":"x","style":{},"text":"Hi","mqtt":{"statusTopic":"demo","commandTopic":"demo/on"}}]})"), false);
+    expect("reject mqtt on container", project_with_root(R"({"id":"r","type":"container","name":"x","style":{},"children":[],"mqtt":{"statusTopic":"demo"}})"), false);
     expect("excessive bytes", std::string(webwb::kMaxProjectBytes + 1, 'x'), false);
 
     std::string nested = minimal_node("leaf");

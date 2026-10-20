@@ -31,6 +31,7 @@ FILES = {
     '/js/renderer.js': ('js/renderer.js', 'application/javascript; charset=utf-8'),
     '/js/properties.js': ('js/properties.js', 'application/javascript; charset=utf-8'),
     '/js/api.js': ('js/api.js', 'application/javascript; charset=utf-8'),
+    '/js/mqtt_reader.js': ('js/mqtt_reader.js', 'application/javascript; charset=utf-8'),
 }
 
 

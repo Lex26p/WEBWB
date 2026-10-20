@@ -148,6 +148,34 @@ bool validate_node(json_object* node, const std::string& location, int depth, St
             return state.reject(location, "invalid slider min/max/step/value");
     }
 
+    // MQTT is optional and strictly read-only in step 11. Only state bindings.
+    json_object* mqtt = nullptr;
+    if (get_field(node, "mqtt", mqtt)) {
+        if (type != "text" && type != "button" && type != "switch" && type != "slider")
+            return state.reject(location, "MQTT binding is not supported for this element");
+        if (!json_object_is_type(mqtt, json_type_object))
+            return state.reject(location, "mqtt must be an object");
+        json_object* topic = nullptr;
+        if (!get_field(mqtt, "statusTopic", topic) || !is_string(topic, 256) ||
+            json_object_get_string_len(topic) > 256)
+            return state.reject(location, "mqtt.statusTopic must be a string up to 256 characters");
+        const std::string topic_name = json_object_get_string(topic);
+        if (topic_name.empty() || topic_name.find_first_of("+#") != std::string::npos)
+            return state.reject(location, "mqtt.statusTopic must be an exact topic (no wildcards)");
+        json_object* active_value = nullptr;
+        if (get_field(mqtt, "activeValue", active_value)) {
+            if (type != "button" && type != "switch")
+                return state.reject(location, "mqtt.activeValue is only for buttons and switches");
+            if (!is_string(active_value, 120))
+                return state.reject(location, "mqtt.activeValue must be a string up to 120 characters");
+        }
+        json_object_object_foreach(mqtt, key, value) {
+            (void)value;
+            if (std::string_view(key) != "statusTopic" && std::string_view(key) != "activeValue")
+                return state.reject(location, "mqtt contains an unsupported property");
+        }
+    }
+
     json_object* children = nullptr;
     if (type == "container") {
         if (!get_field(node, "children", children) || !json_object_is_type(children, json_type_array))

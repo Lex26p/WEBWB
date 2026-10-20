@@ -35,6 +35,13 @@ if ! "$BINARY" --help | grep -Fq 'GET/POST /api/uploads'; then
   exit 1
 fi
 
+echo '== Проверка MQTT-клиента (только чтение) =='
+if command -v node >/dev/null 2>&1; then
+  node "$ROOT/tests/mqtt_reader_test.js"
+else
+  echo '[INFO] Node.js отсутствует: проверка MQTT-клиента пропущена (C++/HTTP тесты продолжаются).'
+fi
+
 echo '== Тесты C++ =='
 ctest --test-dir "$BUILD_DIR" --output-on-failure
 

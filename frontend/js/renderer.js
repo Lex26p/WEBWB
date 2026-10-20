@@ -29,7 +29,7 @@
       el = document.createElement('button'); el.type = 'button';
       el.className = 'node wb-button'; el.textContent = node.text;
       if (!interactive) el.tabIndex = -1;
-      else el.addEventListener('click', () => {
+      else if (!node.mqtt?.statusTopic) el.addEventListener('click', () => {
         el.classList.toggle('is-active');
         if (options.onDemoAction) options.onDemoAction();
       });
@@ -37,7 +37,7 @@
       el = document.createElement('label'); el.className = 'node wb-switch';
       el.setAttribute('aria-label', node.name || 'Переключатель');
       const checkbox = document.createElement('input'); checkbox.type = 'checkbox';
-      checkbox.checked = !!node.checked; checkbox.disabled = !interactive;
+      checkbox.checked = !!node.checked; checkbox.disabled = !interactive || !!node.mqtt?.statusTopic;
       const toggle = document.createElement('span'); toggle.className = 'switch-ui';
       el.append(checkbox, toggle);
     } else if (node.type === 'slider') {
@@ -47,7 +47,7 @@
       const value = document.createElement('span'); value.className = 'slider-value'; value.textContent = String(node.value);
       caption.append(label, value);
       const slider = document.createElement('input'); slider.type = 'range'; slider.min = String(node.min ?? 0); slider.max = String(node.max ?? 100); slider.step = String(node.step ?? 1); slider.value = String(node.value);
-      slider.disabled = !interactive;
+      slider.disabled = !interactive || !!node.mqtt?.statusTopic;
       slider.addEventListener('input', () => { value.textContent = slider.value; });
       el.append(caption, slider);
     } else if (node.type === 'image') {

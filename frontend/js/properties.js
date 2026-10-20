@@ -33,7 +33,9 @@
     sliderMax: 'Самое большое значение ползунка.',
     sliderStep: 'На сколько меняется значение за одно перемещение.',
     sliderValue: 'Положение ползунка при открытии демонстрационного просмотра.',
-    image: 'Картинка хранится на контроллере. Загрузите PNG, JPEG или WebP до 1 МиБ.'
+    image: 'Картинка хранится на контроллере. Загрузите PNG, JPEG или WebP до 1 МиБ.',
+    mqttTopic: 'Полный MQTT-топик состояния, например /devices/demo/controls/Temperature. Пустое поле отключает привязку.',
+    mqttValue: 'Точное значение MQTT, при котором кнопка подсвечивается или переключатель включён. По умолчанию 1.'
   };
   function help(label, tip) {
     return `<button type="button" class="help-button" data-help="${esc(tip)}" aria-label="Подсказка: ${esc(label)}">i</button>`;
@@ -56,7 +58,7 @@
     }
     return `<div class="field"><div class="field-heading"><label class="field-label" for="${id}">${esc(label)}</label>${help(label,opts.tip || '')}</div>${control}</div>`;
   }
-  const expandedGroups = new Set(['Основное','Размеры','Контейнер','Текст','Кнопка','Переключатель','Ползунок','Изображение']);
+  const expandedGroups = new Set(['Основное','Размеры','Контейнер','Текст','Кнопка','Переключатель','Ползунок','Изображение', 'MQTT · состояние']);
   const section = (label, content) => `<details class="prop-section" data-group="${esc(label)}" ${expandedGroups.has(label) ? 'open' : ''}><summary>${esc(label)}</summary><div class="prop-section-content">${content}</div></details>`;
   function sizeField(label, key, raw) {
     const parsed = /^([0-9]+(?:\.[0-9]+)?)(px|%)$/.exec(String(raw));
@@ -151,6 +153,14 @@
       }
       html += section(TYPE_NAMES[node.type],specific);
     }
+    if (['text','button','switch','slider'].includes(node.type)) {
+      const mqtt = node.mqtt || {};
+      let fields = field('Топик состояния', 'mqtt.statusTopic', mqtt.statusTopic || '', {tip:TIPS.mqttTopic});
+      if (['button','switch'].includes(node.type))
+        fields += field('Активное значение', 'mqtt.activeValue', mqtt.activeValue ?? '1', {tip:TIPS.mqttValue});
+      fields += '<p class="field-note">Только чтение. Команды управления добавим на шаге 12.</p>';
+      html += section('MQTT · состояние', fields);
+    }
     $('#properties').innerHTML = html;
   }
 
@@ -197,6 +207,18 @@
       } else {
         node.style[key] = value;
       }
+    } else if (path === 'mqtt.statusTopic') {
+      const topic = String(value).trim();
+      if (!topic || new TextEncoder().encode(topic).length > 256 || /[\u0000+#]/.test(topic)) {
+        if (!topic) delete node.mqtt;
+        else { target.value = node.mqtt?.statusTopic || ''; return; }
+      } else {
+        node.mqtt = {...node.mqtt, statusTopic: topic};
+        if (['button','switch'].includes(node.type) && typeof node.mqtt.activeValue !== 'string')
+          node.mqtt.activeValue = '1';
+      }
+    } else if (path === 'mqtt.activeValue') {
+      if (node.mqtt?.statusTopic) node.mqtt.activeValue = String(value).slice(0,120);
     } else if (path === 'name' || path === 'text') {
       node[path] = String(value).slice(0,10000);
     } else if (path === 'checked') {
