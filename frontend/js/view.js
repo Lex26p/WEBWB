@@ -78,6 +78,12 @@
       slider.disabled = !state.preview;
       slider.addEventListener('input', () => { value.textContent = slider.value; });
       el.append(caption, slider);
+    } else if (node.type === 'image') {
+      el = document.createElement('img'); el.className = 'node wb-image';
+      if (node.src) el.src = node.src;
+      else { el.alt = 'Изображение не выбрано'; el.classList.add('image-empty'); }
+      el.alt = node.name || 'Изображение';
+      el.draggable = false;
     } else if (node.type === 'text') {
       el = document.createElement('div'); el.className = 'node node-text'; el.textContent = node.text;
     } else {

@@ -230,3 +230,7 @@ body.is-preview .canvas-help { display:none; }
 @media (max-width: 1180px) { .project-name-input { width:116px; } .server-project-select { width:145px; } }
 .sidebar-footer { flex-wrap:wrap; }
 .sidebar-footer .server-state { flex-basis:100%; padding-left:12px; }
+
+/* Загруженные изображения ограничиваются своим блоком. */
+.wb-image { display:block; object-fit:contain; max-width:100%; }
+.wb-image.image-empty { background:#e6edf7; border:1px dashed #91a2c0; }

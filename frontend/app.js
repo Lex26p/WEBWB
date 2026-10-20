@@ -492,6 +492,31 @@
     }
   });
   $('#properties').addEventListener('click', e => {
+    const button = e.target.closest('[data-upload-image]');
+    if (!button || !serverReady || apiBusy) {
+      if (button && !serverReady) showToast('Для загрузки изображения нужен сервер');
+      return;
+    }
+    $('#imageFile').value = '';
+    $('#imageFile').click();
+  });
+  $('#imageFile').addEventListener('change', async event => {
+    const file = event.target.files?.[0];
+    const nodeId = selectedId;
+    if (!file || !serverReady || apiBusy) return;
+    apiBusy = true; updateProjectButtons();
+    try {
+      const result = await API.uploadImage(file);
+      const info = locate(nodeId);
+      if (info && info.node.type === 'image') {
+        pushUndo(); info.node.src = result.url;
+        renderAll(); showToast('Изображение загружено на сервер');
+      }
+    } catch (error) {
+      alert('Не удалось загрузить изображение: ' + error.message);
+    } finally { apiBusy = false; updateProjectButtons(); }
+  });
+  $('#properties').addEventListener('click', e => {
     const summary = e.target.closest('details.prop-section > summary');
     if (!summary) return;
     const group = summary.parentElement.dataset.group;

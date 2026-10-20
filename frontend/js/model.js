@@ -5,7 +5,7 @@
   const PREVIOUS_STORAGE_KEY = 'wb-panel-demo-v2';
   const TEMPLATES_KEY = 'wb-panel-templates-v3';
   const LEGACY_STORAGE_KEY = 'wb-panel-demo-v1';
-  const ALLOWED_TYPES = new Set(['container', 'text', 'button', 'switch', 'slider']);
+  const ALLOWED_TYPES = new Set(['container', 'text', 'button', 'switch', 'slider', 'image']);
   const STYLE_KEYS = new Set([
     'display', 'flexDirection', 'justifyContent', 'alignItems', 'flexWrap',
     'width', 'height', 'backgroundColor', 'color', 'borderRadius',
@@ -15,13 +15,14 @@
   ]);
   const TYPE_NAMES = {
     container: 'Контейнер', text: 'Текст', button: 'Кнопка',
-    switch: 'Переключатель', slider: 'Ползунок'
+    switch: 'Переключатель', slider: 'Ползунок', image: 'Изображение'
   };
   const ICON_PATHS = {
     container: '<rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 9v12"/>',
     text: '<path d="M4 7V4h16v3M12 4v16M8 20h8"/>',
     button: '<rect x="3" y="5" width="18" height="14" rx="4"/><path d="M9 12h6"/>',
     switch: '<rect x="2" y="6" width="20" height="12" rx="6"/><circle cx="15.5" cy="12" r="4"/>',
+    image: '<rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8" cy="8" r="2"/><path d="m4 18 6-6 4 4 3-3 3 4"/>',
     slider: '<path d="M4 7h16M4 17h16"/><circle cx="9" cy="7" r="3" fill="white"/><circle cx="16" cy="17" r="3" fill="white"/>',
     layout: '<rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 9v12"/>',
     undo: '<path d="M3 7v5h5"/><path d="M3 12a9 9 0 1 1 3 6"/>',
@@ -88,6 +89,8 @@
         return {...common, checked: false, style: {...common.style,
           width: '43px', height: '25px'
         }};
+      case 'image':
+        return {...common, src: '', style: {...common.style, width:'180px', height:'120px'}};
       case 'slider':
         return {...common, text: 'Уровень', value: 50, min: 0, max: 100, step: 1,
           style: {...common.style, width: '100%', color: '#37455f', fontSize: '14px'
@@ -163,6 +166,9 @@
       node.name = typeof source.name === 'string' ? source.name.slice(0, 150) : node.name;
       if ('text' in node) node.text = typeof source.text === 'string' ? source.text.slice(0, 10000) : node.text;
       if (node.type === 'switch') node.checked = !!source.checked;
+      if (node.type === 'image') {
+        node.src = typeof source.src === 'string' && /^\/api\/uploads\/[a-f0-9]{32}$/.test(source.src) ? source.src : '';
+      }
       if (node.type === 'slider') {
         node.min = clamp(source.min ?? 0, -10000, 10000);
         node.max = clamp(source.max ?? 100, node.min + 1, 10001);

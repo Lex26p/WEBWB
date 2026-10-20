@@ -103,7 +103,7 @@ bool validate_node(json_object* node, const std::string& location, int depth, St
         return state.reject(location, "missing or invalid element type");
     const std::string_view type = json_object_get_string(type_value);
     if (type != "container" && type != "text" && type != "button" &&
-        type != "switch" && type != "slider")
+        type != "switch" && type != "slider" && type != "image")
         return state.reject(location, "unsupported element type");
 
     json_object* style = nullptr;
@@ -119,6 +119,19 @@ bool validate_node(json_object* node, const std::string& location, int depth, St
             return state.reject(location, "text must be a string up to 10000 characters");
     }
 
+    if (type == "image") {
+        json_object* src = nullptr;
+        if (!get_field(node, "src", src) || !is_string(src, 45))
+            return state.reject(location, "image src must be a string");
+        const std::string value = json_object_get_string(src);
+        if (!value.empty()) {
+            if (value.size() != 45 || value.substr(0, 13) != "/api/uploads/")
+                return state.reject(location, "image src must use /api/uploads/<id>");
+            for (auto c : value.substr(13))
+                if (!((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f')))
+                    return state.reject(location, "invalid image id");
+        }
+    }
     if (type == "switch") {
         json_object* checked = nullptr;
         if (!get_field(node, "checked", checked) || !json_object_is_type(checked, json_type_boolean))

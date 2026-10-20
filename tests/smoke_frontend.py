@@ -2,6 +2,7 @@
 """Проверка локального HTTP-доступа к frontend и project API без браузерных зависимостей."""
 import http.client
 import json
+import base64
 import os
 import signal
 from pathlib import Path
@@ -84,6 +85,14 @@ def main():
             check(code == 200 and json.loads(body)['templates'][0]['id'] == template_id, 'Чтение серверного шаблона')
             code, body = request(port, 'DELETE', '/api/templates/' + template_id)
             check(code == 204, 'Удаление серверного шаблона через HTTP-прокси')
+            image = base64.b64decode('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/uS8AAAAASUVORK5CYII=')
+            code, body = request(port, 'POST', '/api/uploads', image)
+            image_id = json.loads(body).get('id')
+            check(code == 201 and image_id, 'Загрузка PNG через общий HTTP-адрес')
+            code, body = request(port, 'GET', '/api/uploads/'+image_id)
+            check(code == 200 and body == image, 'Картинка доступна по HTTP')
+            code, body = request(port, 'GET', '/api/settings')
+            check(code == 200 and json.loads(body)['title'] == 'WEBWB', 'Настройки через HTTP-прокси')
             code, body = request(port, 'GET', '/js/../../backend/src/main.cpp')
             check(code == 404, 'Недоступность исходников через HTTP')
         finally:

@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="color-scheme" content="light">
-  <title>WB Panel — редактор v0.5</title>
+  <title>WB Panel — редактор v0.6</title>
   <link rel="stylesheet" href="styles.css">
   <script src="js/model.js" defer></script>
   <script src="js/view.js" defer></script>
@@ -17,7 +17,7 @@
     <div class="brand">
       <span class="brand-mark" aria-hidden="true">▦</span>
       <span class="brand-copy"><strong>WB Panel</strong><small>Визуальный редактор панелей</small></span>
-      <span class="version">v0.5</span>
+      <span class="version">v0.6</span>
     </div>
     <div class="topbar-actions">
       <button type="button" class="toolbar-button" id="undoBtn" title="Отменить (Ctrl+Z)"><span data-icon="undo"></span><span class="optional-label">Назад</span></button>
@@ -48,6 +48,7 @@
           <div class="add-tile" draggable="true" title="Перетащите на холст или в дерево" data-add="button"><span data-icon="button"></span>Кнопка</div>
           <div class="add-tile" draggable="true" title="Перетащите на холст или в дерево" data-add="switch"><span data-icon="switch"></span>Переключатель</div>
           <div class="add-tile" draggable="true" title="Перетащите на холст или в дерево" data-add="slider"><span data-icon="slider"></span>Ползунок</div>
+          <div class="add-tile" draggable="true" title="Перетащите на холст или в дерево" data-add="image"><span data-icon="image"></span>Изображение</div>
         </div>
       </section>
       <section class="panel-section templates-section">
@@ -97,6 +98,7 @@
     </aside>
   </div>
 
+  <input type="file" id="imageFile" accept="image/png,image/jpeg,image/webp" hidden>
   <input type="file" id="importFile" accept=".json,application/json" hidden>
   <div class="toast" id="toast" role="status" aria-live="polite"></div>
   <div class="floating-tip" id="floatingTip" role="tooltip" hidden></div>

@@ -32,7 +32,8 @@
     sliderMin: 'Самое маленькое значение ползунка.',
     sliderMax: 'Самое большое значение ползунка.',
     sliderStep: 'На сколько меняется значение за одно перемещение.',
-    sliderValue: 'Положение ползунка при открытии демонстрационного просмотра.'
+    sliderValue: 'Положение ползунка при открытии демонстрационного просмотра.',
+    image: 'Картинка хранится на контроллере. Загрузите PNG, JPEG или WebP до 1 МиБ.'
   };
   function help(label, tip) {
     return `<button type="button" class="help-button" data-help="${esc(tip)}" aria-label="Подсказка: ${esc(label)}">i</button>`;
@@ -55,7 +56,7 @@
     }
     return `<div class="field"><div class="field-heading"><label class="field-label" for="${id}">${esc(label)}</label>${help(label,opts.tip || '')}</div>${control}</div>`;
   }
-  const expandedGroups = new Set(['Основное','Размеры','Контейнер','Текст','Кнопка','Переключатель','Ползунок']);
+  const expandedGroups = new Set(['Основное','Размеры','Контейнер','Текст','Кнопка','Переключатель','Ползунок','Изображение']);
   const section = (label, content) => `<details class="prop-section" data-group="${esc(label)}" ${expandedGroups.has(label) ? 'open' : ''}><summary>${esc(label)}</summary><div class="prop-section-content">${content}</div></details>`;
   function sizeField(label, key, raw) {
     const parsed = /^([0-9]+(?:\.[0-9]+)?)(px|%)$/.exec(String(raw));
@@ -140,6 +141,8 @@
       if (node.type === 'text') {
         specific += field('Начертание','style.fontWeight',node.style.fontWeight || '400',{type:'select',options:[['400','Обычное'],['700','Жирное']],tip:TIPS.fontWeight});
         specific += field('Выравнивание текста','style.textAlign',node.style.textAlign || 'left',{type:'select',options:[['left','Слева'],['center','По центру'],['right','Справа']],tip:TIPS.textAlign});
+      } else if (node.type === 'image') {
+        specific += `<div class="field"><div class="field-heading"><span class="field-label">Файл изображения</span>${help('Изображение',TIPS.image)}</div><button type="button" class="toolbar-button" data-upload-image="1">Загрузить изображение</button><div class="field-note">${node.src ? 'Загружено на сервер' : 'Не выбрано'}</div></div>`;
       } else if (node.type === 'switch') {
         specific += field('Начальное состояние','checked',node.checked,{type:'checkbox',tip:TIPS.checked});
       } else if (node.type === 'slider') {

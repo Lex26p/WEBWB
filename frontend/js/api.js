@@ -38,6 +38,18 @@
     load: id => request(idPath(id)),
     create: project => request(ROOT, {method:'POST', body:JSON.stringify(project)}),
     update: (id, project) => request(idPath(id), {method:'PUT', body:JSON.stringify(project)}),
+    uploadImage: async file => {
+      if (!['image/png','image/jpeg','image/webp'].includes(file.type) || file.size > 1024*1024 || file.size === 0)
+        throw new Error('Только PNG, JPEG, WebP размером до 1 МиБ');
+      const response = await fetch('/api/uploads', {method:'POST', body:file, headers:{'Content-Type':file.type}});
+      const data = await response.json();
+      if (!response.ok) throw new Error(`HTTP ${response.status}: ${data.error || 'не удалось загрузить файл'}`);
+      if (!/^\/api\/uploads\/[a-f0-9]{32}$/.test(data.url)) throw new Error('Некорректный ответ сервера');
+      return data;
+    },
+    listImages: async () => (await request('/api/uploads')).uploads,
+    getSettings: () => request('/api/settings'),
+    updateSettings: settings => request('/api/settings', {method:'PUT', body:JSON.stringify(settings)}),
     listTemplates: async () => (await request(TEMPLATES)).templates,
     createTemplate: template => request(TEMPLATES, {method:'POST', body:JSON.stringify(template)}),
     deleteTemplate: id => {

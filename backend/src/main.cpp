@@ -5,6 +5,8 @@
 #include "webwb/project_store.hpp"
 #include "webwb/project_validation.hpp"
 #include "webwb/template_store.hpp"
+#include "webwb/asset_store.hpp"
+#include "webwb/settings_store.hpp"
 
 #include <chrono>
 #include <cstddef>
@@ -37,7 +39,9 @@ void print_usage(const char* executable) {
               << "GET /api/health\n"
               << "POST /api/projects/validate\n"
               << "GET/POST /api/projects and GET/PUT/DELETE /api/projects/<id>\n"
-              << "GET/POST /api/templates and DELETE /api/templates/<id>\n";
+              << "GET/POST /api/templates and DELETE /api/templates/<id>\n"
+              << "GET/POST /api/uploads and GET/DELETE /api/uploads/<id>\n"
+              << "GET/PUT /api/settings\n";
 }
 
 unsigned short parse_port(const std::string& text) {
@@ -84,7 +88,9 @@ std::string error_json(const char* code, const std::string& message = {}) {
 
 http::response<http::string_body> make_response(const http::request<http::string_body>& request,
                                                 webwb::ProjectStore& store,
-                                                webwb::TemplateStore& templates) {
+                                                webwb::TemplateStore& templates,
+                                                webwb::AssetStore& images,
+                                                webwb::SettingsStore& settings) {
     http::response<http::string_body> response;
     response.version(request.version());
     response.keep_alive(false);
@@ -120,6 +126,79 @@ http::response<http::string_body> make_response(const http::request<http::string
             response.result(http::status::method_not_allowed);
             response.set(http::field::allow, "POST");
             response.body() = error_json("method_not_allowed");
+        }
+    } else if (target == "/api/settings") {
+        try {
+            if (method == http::verb::get) {
+                response.result(http::status::ok);
+                response.body() = settings.read();
+            } else if (method == http::verb::put) {
+                if (!webwb::SettingsStore::valid(request.body())) {
+                    response.result(http::status::bad_request);
+                    response.body() = error_json("invalid_settings");
+                } else {
+                    settings.update(request.body());
+                    response.result(http::status::ok);
+                    response.body() = R"({"updated":true})";
+                }
+            } else {
+                response.result(http::status::method_not_allowed);
+                response.set(http::field::allow, "GET, PUT");
+                response.body() = error_json("method_not_allowed");
+            }
+        } catch (const webwb::StoreError& error) {
+            std::cerr << "Settings error: " << error.what() << '\n';
+            response.result(http::status::internal_server_error);
+            response.body() = error_json("storage_error");
+        }
+    } else if (target == "/api/uploads" ||
+               (target.rfind("/api/uploads/", 0) == 0 &&
+                webwb::ProjectStore::valid_project_id(target.substr(13)))) {
+        const bool collection = target == "/api/uploads";
+        const std::string id = collection ? "" : target.substr(13);
+        try {
+            if (collection && method == http::verb::get) {
+                JsonObject output(json_object_new_object(), json_object_put);
+                json_object* array = json_object_new_array();
+                for (const auto& image : images.list()) {
+                    json_object* item = json_object_new_object();
+                    json_object_object_add(item, "id", json_object_new_string(image.id.c_str()));
+                    json_object_object_add(item, "mime", json_object_new_string(image.mime_type.c_str()));
+                    json_object_object_add(item, "size", json_object_new_int64(static_cast<int64_t>(image.size)));
+                    json_object_array_add(array, item);
+                }
+                json_object_object_add(output.get(), "uploads", array);
+                response.result(http::status::ok);
+                response.body() = json_string(output.get());
+            } else if (collection && method == http::verb::post) {
+                const auto new_id = images.create(request.body());
+                response.result(http::status::created);
+                response.set(http::field::location, "/api/uploads/" + new_id);
+                JsonObject output(json_object_new_object(), json_object_put);
+                json_object_object_add(output.get(), "id", json_object_new_string(new_id.c_str()));
+                json_object_object_add(output.get(), "url", json_object_new_string(("/api/uploads/" + new_id).c_str()));
+                response.body() = json_string(output.get());
+            } else if (!collection && method == http::verb::get) {
+                const auto image = images.read(id);
+                response.result(http::status::ok);
+                response.set(http::field::content_type, image.mime_type);
+                response.set("X-Content-Type-Options", "nosniff");
+                response.body() = image.bytes;
+            } else if (!collection && method == http::verb::delete_) {
+                images.remove(id);
+                response.result(http::status::no_content);
+                response.body().clear();
+            } else {
+                response.result(http::status::method_not_allowed);
+                response.set(http::field::allow, collection ? "GET, POST" : "GET, DELETE");
+                response.body() = error_json("method_not_allowed");
+            }
+        } catch (const webwb::StoreError& error) {
+            const bool missing = error.kind() == webwb::StoreErrorKind::not_found;
+            const bool invalid = error.kind() == webwb::StoreErrorKind::conflict;
+            response.result(missing ? http::status::not_found : invalid ? http::status::bad_request : http::status::internal_server_error);
+            response.body() = error_json(missing ? "not_found" : invalid ? "invalid_image" : "storage_error", invalid ? error.what() : "");
+            if (!missing && !invalid) std::cerr << "Image storage error: " << error.what() << '\n';
         }
     } else if (target == "/api/templates" ||
                (target.rfind("/api/templates/", 0) == 0 &&
@@ -236,7 +315,8 @@ http::response<http::string_body> make_response(const http::request<http::string
 }
 
 void serve_connection(tcp::socket socket, webwb::ProjectStore& store,
-                      webwb::TemplateStore& templates) {
+                      webwb::TemplateStore& templates,
+                      webwb::AssetStore& images, webwb::SettingsStore& settings) {
     beast::tcp_stream stream(std::move(socket));
     stream.expires_after(std::chrono::seconds(5));
     beast::flat_buffer buffer;
@@ -248,7 +328,7 @@ void serve_connection(tcp::socket socket, webwb::ProjectStore& store,
     http::read(stream, buffer, parser, error);
     if (!error) {
         const auto request = parser.release();
-        const auto response = make_response(request, store, templates);
+        const auto response = make_response(request, store, templates, images, settings);
         http::write(stream, response, error);
     }
     if (error && error != http::error::end_of_stream) {
@@ -261,6 +341,8 @@ void serve_connection(tcp::socket socket, webwb::ProjectStore& store,
 int run(const Configuration& config) {
     webwb::ProjectStore store(config.data_directory);
     webwb::TemplateStore templates(config.data_directory);
+    webwb::AssetStore images(config.data_directory);
+    webwb::SettingsStore settings(config.data_directory);
     asio::io_context io_context{1};
     tcp::acceptor listener(io_context);
     listener.open(tcp::v4());
@@ -271,6 +353,7 @@ int run(const Configuration& config) {
     std::cout << "WEBWB backend listening at http://127.0.0.1:" << config.port << '\n'
               << "Projects directory: " << config.data_directory << "/projects\n"
               << "Templates directory: " << config.data_directory << "/templates\n"
+              << "Uploads directory: " << config.data_directory << "/uploads\n"
               << "Stop with Ctrl+C.\n" << std::flush;
 
     for (;;) {
@@ -282,7 +365,7 @@ int run(const Configuration& config) {
             continue;
         }
         try {
-            serve_connection(std::move(socket), store, templates);
+            serve_connection(std::move(socket), store, templates, images, settings);
         } catch (const std::exception& ex) {
             std::cerr << "HTTP request error: " << ex.what() << '\n';
         }

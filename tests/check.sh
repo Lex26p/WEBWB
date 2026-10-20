@@ -26,6 +26,15 @@ if ! "$BINARY" --help | grep -Fq 'GET/POST /api/templates'; then
   exit 1
 fi
 
+echo '== Проверка исходников JavaScript =='
+for source in "$ROOT"/frontend/js/*.js "$ROOT"/frontend/app.js; do
+  if command -v node >/dev/null 2>&1; then node --check "$source"; fi
+done
+if ! "$BINARY" --help | grep -Fq 'GET/POST /api/uploads'; then
+  echo '[ERROR] Backend не содержит API изображений (шаг 09).' >&2
+  exit 1
+fi
+
 echo '== Тесты C++ =='
 ctest --test-dir "$BUILD_DIR" --output-on-failure
 

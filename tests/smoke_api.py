@@ -6,6 +6,7 @@
 """
 
 import json
+import base64
 import socket
 import subprocess
 import sys
@@ -57,6 +58,20 @@ def request(port, method, endpoint, body=None):
     return status, result
 
 
+PNG = base64.b64decode(
+    'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/uS8AAAAASUVORK5CYII=')
+
+def binary_request(port, method, path, payload=None, content_type='image/png'):
+    req = urllib.request.Request(
+        f'http://127.0.0.1:{port}{path}', data=payload, method=method,
+        headers={'Content-Type': content_type} if payload is not None else {})
+    try:
+        with urllib.request.urlopen(req, timeout=4) as result:
+            return result.status, result.read(), result.headers
+    except urllib.error.HTTPError as error:
+        return error.code, error.read(), error.headers
+
+
 def start_server(binary, port, data_directory):
     log = tempfile.TemporaryFile(mode='w+t', encoding='utf-8')
     process = subprocess.Popen(
@@ -105,6 +120,16 @@ def test_api(binary):
 
             status, response = request(port, 'POST', '/api/projects/validate', project)
             require(status == 200 and response.get('valid') is True, 'Валидация проекта')
+            project_with_image = json.loads(json.dumps(project))
+            project_with_image['root']['children'].append({
+                'id':'test_image', 'name':'Картинка', 'type':'image',
+                'style':{'width':'180px','height':'120px'}, 'src':''})
+            status, response = request(port, 'POST', '/api/projects/validate', project_with_image)
+            require(status == 200 and response.get('valid') is True, 'Проект с изображением проходит проверку')
+            project_with_image['root']['children'][-1]['src'] = 'javascript:alert(1)'
+            status, response = request(port, 'POST', '/api/projects/validate', project_with_image)
+            require(status == 400 and response.get('error') == 'invalid_project', 'Посторонние адреса изображений отклоняются')
+
 
             status, response = request(port, 'POST', '/api/projects', project)
             project_id = response.get('id') if isinstance(response, dict) else None
@@ -155,12 +180,46 @@ def test_api(binary):
             status, response = request(port, 'GET', '/api/templates')
             require(status == 200 and len(response['templates']) == 1, 'Неверный запрос не повреждает шаблон')
 
+            status, settings = request(port, 'GET', '/api/settings')
+            require(status == 200 and settings == {'title':'WEBWB'}, 'Настройки по умолчанию')
+            status, data = request(port, 'PUT', '/api/settings', {'title':'Мой контроллер'})
+            require(status == 200 and data.get('updated'), 'Сохранение общих настроек')
+            status, data = request(port, 'PUT', '/api/settings', {'title':5})
+            require(status == 400 and data.get('error') == 'invalid_settings', 'Неверные настройки отклоняются')
+
+            status, body, _ = binary_request(port, 'POST', '/api/uploads', PNG)
+            image = json.loads(body)
+            image_id = image.get('id')
+            require(status == 201 and len(image_id or '') == 32, 'Загрузка PNG на backend')
+            valid_image_project = json.loads(json.dumps(project))
+            valid_image_project['root']['children'].append({
+                'id':'image_saved', 'name':'Иконка', 'type':'image',
+                'style':{'width':'120px','height':'120px'}, 'src':'/api/uploads/'+image_id})
+            status, response = request(port, 'POST', '/api/projects/validate', valid_image_project)
+            require(status == 200 and response.get('valid') is True, 'Проект со ссылкой на загруженное изображение валиден')
+
+            status, body, header = binary_request(port, 'GET', '/api/uploads/'+image_id)
+            require(status == 200 and body == PNG and header.get_content_type() == 'image/png', 'Чтение PNG без изменения байтов')
+            status, body, _ = binary_request(port, 'POST', '/api/uploads', b'not an image', 'text/plain')
+            require(status == 400 and json.loads(body)['error'] == 'invalid_image', 'Неизвестный формат отклоняется')
+            status, data = request(port, 'GET', '/api/uploads')
+            require(status == 200 and len(data['uploads']) == 1, 'Список загруженных изображений')
+
             stop_server(process)
             log.close()
             process, log = start_server(binary, port, data_dir)
             status, response = request(port, 'GET', endpoint)
             require(status == 200 and response.get('title') == modified['title'],
                     'Проект сохранился после перезапуска backend')
+            status, data = request(port, 'GET', '/api/settings')
+            require(status == 200 and data == {'title':'Мой контроллер'}, 'Настройки пережили перезапуск backend')
+            status, data = request(port, 'GET', '/api/uploads')
+            require(status == 200 and any(a['id'] == image_id for a in data['uploads']), 'Изображение пережило перезапуск')
+            status, _, _ = binary_request(port, 'DELETE', '/api/uploads/'+image_id)
+            require(status == 204, 'Удаление изображения')
+            status, _, _ = binary_request(port, 'GET', '/api/uploads/'+image_id)
+            require(status == 404, 'Удалённое изображение недоступно')
+
             status, response = request(port, 'GET', '/api/templates')
             require(status == 200 and len(response['templates']) == 1 and
                     response['templates'][0]['id'] == template_id,

@@ -67,3 +67,16 @@ python3 tests/smoke_api.py /путь/к/webwb_backend
 HTTP: `GET /api/templates`, `POST /api/templates`, `DELETE /api/templates/<id>`.
 Сохраняются независимо от проектов; перезапуск backend их не удаляет.
 Проверка (включая хранение шаблонов): `bash tests/check.sh` из корня проекта.
+
+## Шаг 09: изображения и настройки
+
+Backend использует каталоги `<data-dir>/projects`, `<data-dir>/templates`, `<data-dir>/uploads` и файл `<data-dir>/settings.json`.
+
+- `POST /api/uploads`: бинарное тело PNG/JPEG/WebP, не больше 1 МиБ. Файл определяется по содержимому; имя из браузера не используется. Ответ `201 {"id":"...","url":"/api/uploads/..."}`.
+- `GET /api/uploads`: JSON-список `uploads` с `id`, `mime`, `size`.
+- `GET /api/uploads/<id>`: само изображение с `Content-Type: image/...`.
+- `DELETE /api/uploads/<id>`: удаляет файл (`204`), без поиска и удаления ссылок в проектах.
+- `GET /api/settings`: `{"title":"WEBWB"}` по умолчанию.
+- `PUT /api/settings`: сохранить настройки с одним строковым свойством `title`, до 120 байт, проверка размера и типа (`200 {"updated":true}`).
+
+Имя загруженного файла формируется по случайному 32-значному ID; запрещённые пути, симлинки файлов и неподдерживаемый формат не обслуживаются. Для настоящей эксплуатации backend остаётся доступен только через nginx в доверенной сети. Протокол не содержит авторизации по решению владельца.
