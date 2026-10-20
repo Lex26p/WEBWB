@@ -7,7 +7,21 @@
     loadInitialProject, normalizeProject, loadTemplates,
     validateSnippet, nodeCount, nodeHeight, containsNode
   } = window.WBPanelModel;
+  const API = window.WBPanelAPI;
+  const SERVER_SESSION_KEY = 'webwb-current-server-project-v1';
   let project = loadInitialProject();
+  let serverProjectId = null;
+  let serverBaseline = null;
+  let serverReady = false;
+  let apiBusy = false;
+  let projectList = [];
+  try {
+    const saved = JSON.parse(localStorage.getItem(SERVER_SESSION_KEY) || 'null');
+    if (saved && /^[0-9a-f]{32}$/.test(saved.id) && typeof saved.baseline === 'string') {
+      serverProjectId = saved.id;
+      serverBaseline = saved.baseline;
+    }
+  } catch (_) { /* Нет сохранённой связи с серверным проектом. */ }
   let selectedId = project.root.id;
   let preview = false;
   let undoStack = [], redoStack = [];
@@ -19,9 +33,113 @@
   const collapsed = new Set();
   let toastTimer = null;
 
+  function isDirty() {
+    return serverProjectId === null || JSON.stringify(project) !== serverBaseline;
+  }
+  function updateSaveStatus() {
+    const el = $('#saveStatus');
+    if (serverProjectId && !isDirty()) el.textContent = 'Сохранено на сервере';
+    else if (serverProjectId) el.textContent = 'Не сохранено на сервере · черновик в браузере';
+    else el.textContent = 'Новый проект · черновик в браузере';
+  }
+  function storeServerSession() {
+    try {
+      if (serverProjectId) localStorage.setItem(SERVER_SESSION_KEY,
+        JSON.stringify({id:serverProjectId, baseline:serverBaseline}));
+      else localStorage.removeItem(SERVER_SESSION_KEY);
+    } catch (_) { /* Сервер остаётся главным хранилищем, localStorage необязателен. */ }
+  }
   function saveLocal() {
     try { localStorage.setItem(STORAGE_KEY, JSON.stringify(project)); }
-    catch (e) { $('#saveStatus').textContent = 'Не удалось сохранить в браузере'; }
+    catch (_) { $('#saveStatus').textContent = 'Не удалось сохранить черновик в браузере'; return; }
+    updateSaveStatus();
+  }
+  function updateProjectButtons() {
+    const offline = !serverReady || apiBusy;
+    $('#saveServerBtn').disabled = offline;
+    $('#openServerBtn').disabled = offline || !$('#serverProjectSelect').value;
+    $('#refreshProjectsBtn').disabled = apiBusy;
+    $('#serverProjectSelect').disabled = offline;
+    $('#newBtn').disabled = apiBusy;
+    $('#importBtn').disabled = apiBusy;
+    $('#serverStatus').textContent = apiBusy ? 'Сервер: выполняется запрос…'
+      : serverReady ? 'Сервер: доступен' : 'Сервер: недоступен · открыт локальный черновик';
+  }
+  function populateProjectList(preferredId = null) {
+    const picker = $('#serverProjectSelect');
+    const chosen = preferredId || picker.value || serverProjectId;
+    picker.replaceChildren(new Option('Выберите проект…', ''));
+    for (const item of projectList) {
+      if (typeof item.id !== 'string') continue;
+      picker.add(new Option(String(item.title || 'Без названия'), item.id));
+    }
+    if (chosen && projectList.some(p => p.id === chosen)) picker.value = chosen;
+    updateProjectButtons();
+  }
+  async function refreshProjectList() {
+    if (location.protocol === 'file:') {
+      serverReady = false; updateProjectButtons(); return;
+    }
+    try {
+      projectList = await API.list();
+      if (!Array.isArray(projectList)) throw new Error('Неправильный список проектов');
+      serverReady = true;
+      populateProjectList();
+    } catch (error) {
+      serverReady = false;
+      projectList = [];
+      populateProjectList();
+      showToast('Сервер недоступен: ' + error.message);
+    }
+  }
+  function confirmReplace() {
+    return !isDirty() || confirm('Есть несохранённые на сервере изменения. Продолжить и заменить текущую страницу?');
+  }
+  function activateProject(nextProject, id = null) {
+    project = nextProject;
+    serverProjectId = id;
+    serverBaseline = id ? JSON.stringify(project) : null;
+    storeServerSession();
+    undoStack = []; redoStack = []; baselineOnFocus = null;
+    selectedId = project.root.id;
+    collapsed.clear(); preview = false;
+    renderAll();
+  }
+  async function saveToServer() {
+    if (!serverReady || apiBusy) return;
+    const snapshot = JSON.stringify(project);
+    apiBusy = true; updateProjectButtons();
+    try {
+      if (serverProjectId) {
+        await API.update(serverProjectId, JSON.parse(snapshot));
+      } else {
+        const result = await API.create(JSON.parse(snapshot));
+        if (!result || !/^[0-9a-f]{32}$/.test(result.id)) throw new Error('Сервер не вернул ID проекта');
+        serverProjectId = result.id;
+      }
+      serverBaseline = snapshot;
+      storeServerSession();
+      updateSaveStatus();
+      showToast('Проект сохранён на сервере');
+      try { projectList = await API.list(); populateProjectList(serverProjectId); }
+      catch (_) { /* Сохранение уже прошло; сбой обновления списка не отменяет его. */ }
+    } catch (error) {
+      showToast('Ошибка сохранения: ' + error.message);
+      alert('Не удалось сохранить проект на сервере: ' + error.message);
+    } finally { apiBusy = false; updateProjectButtons(); }
+  }
+  async function openFromServer() {
+    if (!serverReady || apiBusy) return;
+    const id = $('#serverProjectSelect').value;
+    if (!id || !confirmReplace()) return;
+    apiBusy = true; updateProjectButtons();
+    try {
+      const saved = await API.load(id);
+      activateProject(normalizeProject(saved), id);
+      showToast('Проект загружен с сервера');
+    } catch (error) {
+      alert('Не удалось открыть проект с сервера: ' + error.message);
+    } finally { apiBusy = false; updateProjectButtons(); }
   }
   function saveTemplates() {
     try { localStorage.setItem(TEMPLATES_KEY, JSON.stringify(templates)); }
@@ -75,6 +193,7 @@
   }
   function refreshTop() {
     $('#projectTitle').textContent = project.title;
+    if (document.activeElement !== $('#projectNameInput')) $('#projectNameInput').value = project.title;
     $('#undoBtn').disabled = undoStack.length === 0;
     $('#redoBtn').disabled = redoStack.length === 0;
     document.body.classList.toggle('is-preview',preview);
@@ -370,10 +489,33 @@
   $('#undoBtn').addEventListener('click', undo);
   $('#redoBtn').addEventListener('click', redo);
   $('#newBtn').addEventListener('click', () => {
-    if (!confirm('Создать новый проект? Текущая страница будет заменена. Рекомендуем предварительно скачать JSON.')) return;
-    pushUndo(); project = createDemo(); project.root.children = [];
-    selectedId = project.root.id; collapsed.clear(); renderAll(); showToast('Пустой проект создан');
+    if (!confirmReplace()) return;
+    const blank = createDemo(); blank.root.children = []; blank.title = 'Новый проект';
+    activateProject(blank);
+    $('#serverProjectSelect').value = '';
+    updateProjectButtons();
+    showToast('Создан черновик. Нажмите «Сохранить», чтобы записать его на сервер.');
   });
+  $('#projectNameInput').addEventListener('focus', () => { baselineOnFocus = JSON.stringify(project); });
+  $('#projectNameInput').addEventListener('input', e => {
+    project.title = e.target.value.slice(0, 100);
+    $('#projectTitle').textContent = project.title;
+    saveLocal();
+  });
+  $('#projectNameInput').addEventListener('change', () => {
+    if (!project.title.trim()) project.title = 'Без названия';
+    if (baselineOnFocus && baselineOnFocus !== JSON.stringify(project)) pushUndo(baselineOnFocus);
+    baselineOnFocus = null; refreshTop(); saveLocal();
+  });
+  $('#projectNameInput').addEventListener('blur', () => {
+    if (baselineOnFocus && baselineOnFocus !== JSON.stringify(project)) pushUndo(baselineOnFocus);
+    baselineOnFocus = null; refreshTop(); saveLocal();
+  });
+  $('#projectNameInput').addEventListener('keydown', e => { if (e.key === 'Enter') e.target.blur(); });
+  $('#refreshProjectsBtn').addEventListener('click', refreshProjectList);
+  $('#openServerBtn').addEventListener('click', openFromServer);
+  $('#saveServerBtn').addEventListener('click', saveToServer);
+  $('#serverProjectSelect').addEventListener('change', updateProjectButtons);
   $('#exportBtn').addEventListener('click', () => {
     const blob = new Blob([JSON.stringify(project,null,2)],{type:'application/json;charset=utf-8'});
     const url = URL.createObjectURL(blob);
@@ -389,8 +531,9 @@
     try {
       if (file.size > 1024*1024) throw Error('Файл больше 1 МБ');
       const newProject = normalizeProject(JSON.parse(await file.text()));
-      pushUndo(); project = newProject; selectedId = project.root.id; collapsed.clear();
-      preview = false; renderAll(); showToast('Проект открыт');
+      if (!confirmReplace()) return;
+      activateProject(newProject); $('#serverProjectSelect').value = ''; updateProjectButtons();
+      showToast('JSON открыт как новый черновик. Для сохранения нажмите «Сохранить».');
     } catch(error) { alert('Не удалось открыть проект: ' + error.message); }
     e.target.value='';
   });
@@ -440,4 +583,6 @@
   $('#properties').addEventListener('scroll', hideHelp);
   window.addEventListener('resize', hideHelp);
   renderIcons(); renderAll();
+  populateProjectList();
+  refreshProjectList();
 })();

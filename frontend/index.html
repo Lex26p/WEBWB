@@ -9,6 +9,7 @@
   <script src="js/model.js" defer></script>
   <script src="js/view.js" defer></script>
   <script src="js/properties.js" defer></script>
+  <script src="js/api.js" defer></script>
   <script src="app.js" defer></script>
 </head>
 <body>
@@ -16,13 +17,19 @@
     <div class="brand">
       <span class="brand-mark" aria-hidden="true">▦</span>
       <span class="brand-copy"><strong>WB Panel</strong><small>Визуальный редактор панелей</small></span>
-      <span class="version">v0.3.4</span>
+      <span class="version">v0.4</span>
     </div>
     <div class="topbar-actions">
       <button type="button" class="toolbar-button" id="undoBtn" title="Отменить (Ctrl+Z)"><span data-icon="undo"></span><span class="optional-label">Назад</span></button>
       <button type="button" class="toolbar-button" id="redoBtn" title="Повторить (Ctrl+Shift+Z)"><span data-icon="redo"></span><span class="optional-label">Вперёд</span></button>
       <span class="toolbar-divider"></span>
+      <label class="project-name-label" for="projectNameInput">Название</label>
+      <input class="project-name-input" id="projectNameInput" type="text" maxlength="100" aria-label="Название проекта" placeholder="Название проекта">
       <button type="button" class="toolbar-button" id="newBtn"><span data-icon="new"></span><span class="optional-label">Новый</span></button>
+      <select id="serverProjectSelect" class="server-project-select" aria-label="Проекты на сервере" title="Выберите сохранённый проект"></select>
+      <button type="button" class="toolbar-button" id="refreshProjectsBtn" title="Обновить список проектов">↻</button>
+      <button type="button" class="toolbar-button" id="openServerBtn" title="Открыть выбранный проект с сервера">Открыть с сервера</button>
+      <button type="button" class="toolbar-button save-server-button" id="saveServerBtn" title="Сохранить проект на сервере">Сохранить</button>
       <button type="button" class="toolbar-button" id="importBtn"><span data-icon="upload"></span><span class="optional-label">Открыть</span></button>
       <button type="button" class="toolbar-button" id="exportBtn"><span data-icon="download"></span><span>Скачать JSON</span></button>
       <span class="toolbar-divider"></span>
@@ -53,7 +60,7 @@
         <div class="tree" id="tree" aria-label="Дерево элементов"></div>
         <p class="tree-hint">Перетаскивайте элементы: <b>над</b>, <b>внутрь</b> или <b>под</b> узлом.</p>
       </section>
-      <div class="sidebar-footer"><span class="status-dot"></span><span id="saveStatus">Изменения сохраняются в браузере</span></div>
+      <div class="sidebar-footer"><span class="status-dot"></span><span id="saveStatus">Черновик в браузере</span><span id="serverStatus" class="server-state">Сервер: проверка...</span></div>
     </aside>
 
     <main class="work-area">

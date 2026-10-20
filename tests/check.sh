@@ -28,3 +28,6 @@ echo '== Проверка HTTP API =='
 python3 "$ROOT/tests/smoke_api.py" "$BINARY"
 
 echo '== WEBWB: все проверки пройдены =='
+
+echo '== Проверка совместного HTTP-доступа к редактору и API =='
+python3 "$ROOT/tests/smoke_frontend.py" "$BINARY"

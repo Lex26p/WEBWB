@@ -218,3 +218,15 @@ body.is-preview .canvas-help { display:none; }
 .element-actions .icon-button { width:30px; height:31px; }
 .element-actions .icon-button[title="Сохранить как шаблон"] { color:#365faf; }
 @media (max-width:780px) { .templates-section { max-height:165px; } }
+
+/* Шаг 07: лёгкая панель управления проектами на backend. */
+.project-name-label { font-size:11px; color:var(--muted); white-space:nowrap; }
+.project-name-input, .server-project-select { height:35px; border:1px solid var(--border); background:#fff; color:var(--ink); border-radius:8px; padding:0 9px; font-size:12px; min-width:0; }
+.project-name-input { width:132px; }
+.server-project-select { width:170px; max-width:250px; }
+.save-server-button { background:var(--blue); color:white; border-color:var(--blue); }
+.save-server-button:hover:not(:disabled) { background:#2454d3; color:white; }
+.server-state { display:block; font-size:11px; color:var(--muted); margin-top:3px; }
+@media (max-width: 1180px) { .project-name-input { width:116px; } .server-project-select { width:145px; } }
+.sidebar-footer { flex-wrap:wrap; }
+.sidebar-footer .server-state { flex-basis:100%; padding-left:12px; }

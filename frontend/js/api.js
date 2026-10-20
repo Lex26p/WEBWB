@@ -1,0 +1,41 @@
+/* WEBWB: проекты на backend. Все URL относительны текущему HTTP-сайту. */
+(() => {
+  'use strict';
+  const ROOT = '/api/projects';
+
+  async function request(path, options = {}) {
+    let response;
+    try {
+      response = await fetch(path, {
+        cache: 'no-store',
+        ...options,
+        headers: { ...(options.body === undefined ? {} : {'Content-Type': 'application/json'}), ...options.headers }
+      });
+    } catch (_) {
+      throw new Error('Нет связи с сервером. Запустите редактор через tests/run_editor.sh.');
+    }
+    let payload = null;
+    const text = await response.text();
+    if (text) {
+      try { payload = JSON.parse(text); }
+      catch { throw new Error('Сервер вернул некорректный JSON'); }
+    }
+    if (!response.ok) {
+      const detail = payload?.detail || payload?.error || response.statusText;
+      throw new Error(`HTTP ${response.status}: ${detail}`);
+    }
+    return payload;
+  }
+
+  const idPath = id => {
+    if (!/^[0-9a-f]{32}$/.test(id)) throw new Error('Некорректный ID проекта');
+    return ROOT + '/' + id;
+  };
+
+  window.WBPanelAPI = Object.freeze({
+    list: async () => (await request(ROOT)).projects,
+    load: id => request(idPath(id)),
+    create: project => request(ROOT, {method:'POST', body:JSON.stringify(project)}),
+    update: (id, project) => request(idPath(id), {method:'PUT', body:JSON.stringify(project)})
+  });
+})();
