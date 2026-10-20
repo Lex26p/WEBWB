@@ -1,0 +1,20 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <title>WEBWB — панель</title>
+  <link rel="stylesheet" href="styles.css">
+  <link rel="stylesheet" href="viewer.css">
+  <script src="js/model.js" defer></script>
+  <script src="js/renderer.js" defer></script>
+  <script src="js/api.js" defer></script>
+  <script src="viewer.js" defer></script>
+</head>
+<body class="viewer-body">
+  <main id="viewerCanvas" class="viewer-root" aria-label="Панель управления" hidden></main>
+  <p id="viewerStatus" class="viewer-status" role="status">Загрузка панели…</p>
+  <div id="viewerDemo" class="viewer-demo" hidden>Демонстрационный просмотр · MQTT пока не подключён</div>
+</body>
+</html>

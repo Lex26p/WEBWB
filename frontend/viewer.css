@@ -1,0 +1,11 @@
+/* Минимальное оформление отдельной страницы: инструменты редактора не загружаются. */
+html, body.viewer-body { min-height:100%; }
+body.viewer-body { margin:0; background:#fff; }
+.viewer-root { width:100%; min-height:100vh; }
+.viewer-root > .node-container { min-height:100vh; }
+.viewer-status { max-width:520px; margin:15vh auto 0; padding:20px; text-align:center;
+  font-size:15px; color:#65758c; line-height:1.5; }
+.viewer-status.error { color:#a93535; }
+.viewer-demo { position:fixed; right:12px; bottom:12px; z-index:3;
+  border-radius:6px; padding:6px 9px; background:rgba(23,35,57,.78); color:white;
+  font-size:11px; pointer-events:none; }

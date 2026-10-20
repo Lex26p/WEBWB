@@ -234,3 +234,7 @@ body.is-preview .canvas-help { display:none; }
 /* Загруженные изображения ограничиваются своим блоком. */
 .wb-image { display:block; object-fit:contain; max-width:100%; }
 .wb-image.image-empty { background:#e6edf7; border:1px dashed #91a2c0; }
+
+/* Ссылка на отдельную страницу просмотра сохранённого проекта. */
+.viewer-open-link { text-decoration:none; border-color:#dce6f7; color:#2454c8; }
+.viewer-open-link:hover { background:#edf3ff; }

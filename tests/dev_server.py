@@ -21,10 +21,14 @@ FRONTEND = ROOT / 'frontend'
 FILES = {
     '/': ('index.html', 'text/html; charset=utf-8'),
     '/index.html': ('index.html', 'text/html; charset=utf-8'),
+    '/viewer.html': ('viewer.html', 'text/html; charset=utf-8'),
+    '/viewer.css': ('viewer.css', 'text/css; charset=utf-8'),
+    '/viewer.js': ('viewer.js', 'application/javascript; charset=utf-8'),
     '/styles.css': ('styles.css', 'text/css; charset=utf-8'),
     '/app.js': ('app.js', 'application/javascript; charset=utf-8'),
     '/js/model.js': ('js/model.js', 'application/javascript; charset=utf-8'),
     '/js/view.js': ('js/view.js', 'application/javascript; charset=utf-8'),
+    '/js/renderer.js': ('js/renderer.js', 'application/javascript; charset=utf-8'),
     '/js/properties.js': ('js/properties.js', 'application/javascript; charset=utf-8'),
     '/js/api.js': ('js/api.js', 'application/javascript; charset=utf-8'),
 }

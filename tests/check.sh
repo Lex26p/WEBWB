@@ -27,7 +27,7 @@ if ! "$BINARY" --help | grep -Fq 'GET/POST /api/templates'; then
 fi
 
 echo '== Проверка исходников JavaScript =='
-for source in "$ROOT"/frontend/js/*.js "$ROOT"/frontend/app.js; do
+for source in "$ROOT"/frontend/js/*.js "$ROOT"/frontend/app.js "$ROOT"/frontend/viewer.js; do
   if command -v node >/dev/null 2>&1; then node --check "$source"; fi
 done
 if ! "$BINARY" --help | grep -Fq 'GET/POST /api/uploads'; then

@@ -59,6 +59,17 @@ def main():
                 raise RuntimeError('Сервер не ответил вовремя')
             code, html = request(port, 'GET', '/')
             check(code == 200 and b'id="saveServerBtn"' in html, 'Редактор доступен по HTTP')
+            code, viewer_html = request(port, 'GET', '/viewer.html')
+            check(code == 200 and b'id="viewerCanvas"' in viewer_html
+                  and b'id="properties"' not in viewer_html, 'Отдельная страница просмотра без редактора')
+            code, viewer_js = request(port, 'GET', '/viewer.js')
+            check(code == 200 and b'WBPanelAPI.load' in viewer_js,
+                  'Просмотр загружает проект через API')
+            code, renderer_js = request(port, 'GET', '/js/renderer.js')
+            check(code == 200 and b'WBPanelRenderer' in renderer_js,
+                  'Общий рендерер доступен редактору и просмотру')
+            code, viewer_css = request(port, 'GET', '/viewer.css')
+            check(code == 200 and b'.viewer-root' in viewer_css, 'Стили страницы просмотра доступны')
             code, js = request(port, 'GET', '/js/api.js')
             check(code == 200 and b'WBPanelAPI' in js, 'JavaScript API доступен')
             code, css = request(port, 'GET', '/styles.css')

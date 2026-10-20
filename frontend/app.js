@@ -56,6 +56,13 @@
   }
   function updateProjectButtons() {
     const offline = !serverReady || apiBusy;
+    // Viewer показывает только последнее сохранённое состояние проекта.
+    const viewerLink = $('#viewerLink');
+    viewerLink.hidden = !serverReady || !serverProjectId;
+    if (serverProjectId) viewerLink.href = '/viewer.html?id=' + serverProjectId;
+    viewerLink.title = isDirty()
+      ? 'Открыть последнюю сохранённую версию (есть несохранённые изменения)'
+      : 'Открыть сохранённый проект без редактора';
     $('#saveServerBtn').disabled = offline;
     $('#openServerBtn').disabled = offline || !$('#serverProjectSelect').value;
     $('#refreshProjectsBtn').disabled = apiBusy;

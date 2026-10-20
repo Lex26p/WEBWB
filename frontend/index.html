@@ -7,6 +7,7 @@
   <title>WB Panel — редактор v0.6</title>
   <link rel="stylesheet" href="styles.css">
   <script src="js/model.js" defer></script>
+  <script src="js/renderer.js" defer></script>
   <script src="js/view.js" defer></script>
   <script src="js/properties.js" defer></script>
   <script src="js/api.js" defer></script>
@@ -30,6 +31,7 @@
       <button type="button" class="toolbar-button" id="refreshProjectsBtn" title="Обновить список проектов">↻</button>
       <button type="button" class="toolbar-button" id="openServerBtn" title="Открыть выбранный проект с сервера">Открыть с сервера</button>
       <button type="button" class="toolbar-button save-server-button" id="saveServerBtn" title="Сохранить проект на сервере">Сохранить</button>
+      <a class="toolbar-button viewer-open-link" id="viewerLink" href="#" target="_blank" rel="noopener noreferrer" title="Открыть сохранённую панель в новой вкладке" hidden>Открыть панель</a>
       <button type="button" class="toolbar-button" id="importBtn"><span data-icon="upload"></span><span class="optional-label">Открыть</span></button>
       <button type="button" class="toolbar-button" id="exportBtn"><span data-icon="download"></span><span>Скачать JSON</span></button>
       <span class="toolbar-divider"></span>
