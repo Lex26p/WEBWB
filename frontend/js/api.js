@@ -2,6 +2,7 @@
 (() => {
   'use strict';
   const ROOT = '/api/projects';
+  const TEMPLATES = '/api/templates';
 
   async function request(path, options = {}) {
     let response;
@@ -36,6 +37,12 @@
     list: async () => (await request(ROOT)).projects,
     load: id => request(idPath(id)),
     create: project => request(ROOT, {method:'POST', body:JSON.stringify(project)}),
-    update: (id, project) => request(idPath(id), {method:'PUT', body:JSON.stringify(project)})
+    update: (id, project) => request(idPath(id), {method:'PUT', body:JSON.stringify(project)}),
+    listTemplates: async () => (await request(TEMPLATES)).templates,
+    createTemplate: template => request(TEMPLATES, {method:'POST', body:JSON.stringify(template)}),
+    deleteTemplate: id => {
+      if (!/^[0-9a-f]{32}$/.test(id)) throw new Error('Некорректный ID шаблона');
+      return request(TEMPLATES + '/' + id, {method:'DELETE'});
+    }
   });
 })();

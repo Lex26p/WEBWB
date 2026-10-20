@@ -196,4 +196,34 @@ ValidationResult validate_project(std::string_view source) {
     return {true, {}};
 }
 
+
+ValidationResult validate_template(std::string_view source) {
+    if (source.empty() || source.size() > kMaxProjectBytes ||
+        source.size() > static_cast<std::size_t>(std::numeric_limits<int>::max()))
+        return {false, "template JSON must be between 1 byte and 1 MiB"};
+    JsonParser parser(json_tokener_new_ex(128), &json_tokener_free);
+    if (!parser) return {false, "unable to initialize JSON parser"};
+    JsonValue document(json_tokener_parse_ex(parser.get(), source.data(),
+                                         static_cast<int>(source.size())), &json_object_put);
+    if (json_tokener_get_error(parser.get()) != json_tokener_success)
+        return {false, "malformed template JSON"};
+    const auto used = json_tokener_get_parse_end(parser.get());
+    for (std::size_t pos = used; pos < source.size(); ++pos) {
+        if (source[pos] != ' ' && source[pos] != '\t' && source[pos] != '\r' && source[pos] != '\n')
+            return {false, "unexpected content after template JSON"};
+    }
+    if (!json_object_is_type(document.get(), json_type_object))
+        return {false, "template must be an object"};
+    json_object* name = nullptr;
+    if (!get_field(document.get(), "name", name) || !is_string(name, 80) ||
+        json_object_get_string_len(name) == 0)
+        return {false, "template name must be a non-empty string up to 80 characters"};
+    json_object* node = nullptr;
+    if (!get_field(document.get(), "node", node))
+        return {false, "template node is missing"};
+    State state;
+    if (!validate_node(node, "node", 0, state)) return {false, std::move(state.error)};
+    return {true, {}};
+}
+
 } // namespace webwb

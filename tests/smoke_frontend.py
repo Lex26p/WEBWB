@@ -74,6 +74,16 @@ def main():
             check(code == 200, 'Сохранение изменений через общий адрес')
             code, body = request(port, 'GET', '/api/projects')
             check(code == 200 and len(json.loads(body)['projects']) == 1, 'Обновление списка проектов')
+            template = {'name': 'Тестовый шаблон', 'node': json.loads(sample)['root']['children'][0]}
+            code, body = request(port, 'GET', '/api/templates')
+            check(code == 200 and json.loads(body)['templates'] == [], 'Шаблоны через общий HTTP-адрес')
+            code, body = request(port, 'POST', '/api/templates', json.dumps(template, ensure_ascii=False).encode())
+            template_id = json.loads(body).get('id') if body else None
+            check(code == 201 and template_id and len(template_id) == 32, 'Создание шаблона через HTTP-прокси')
+            code, body = request(port, 'GET', '/api/templates')
+            check(code == 200 and json.loads(body)['templates'][0]['id'] == template_id, 'Чтение серверного шаблона')
+            code, body = request(port, 'DELETE', '/api/templates/' + template_id)
+            check(code == 204, 'Удаление серверного шаблона через HTTP-прокси')
             code, body = request(port, 'GET', '/js/../../backend/src/main.cpp')
             check(code == 404, 'Недоступность исходников через HTTP')
         finally:

@@ -4,6 +4,7 @@
 
 #include "webwb/project_store.hpp"
 #include "webwb/project_validation.hpp"
+#include "webwb/template_store.hpp"
 
 #include <chrono>
 #include <cstddef>
@@ -35,7 +36,8 @@ void print_usage(const char* executable) {
               << "Server listens on 127.0.0.1 only.\n"
               << "GET /api/health\n"
               << "POST /api/projects/validate\n"
-              << "GET/POST /api/projects and GET/PUT/DELETE /api/projects/<id>\n";
+              << "GET/POST /api/projects and GET/PUT/DELETE /api/projects/<id>\n"
+              << "GET/POST /api/templates and DELETE /api/templates/<id>\n";
 }
 
 unsigned short parse_port(const std::string& text) {
@@ -81,7 +83,8 @@ std::string error_json(const char* code, const std::string& message = {}) {
 }
 
 http::response<http::string_body> make_response(const http::request<http::string_body>& request,
-                                                webwb::ProjectStore& store) {
+                                                webwb::ProjectStore& store,
+                                                webwb::TemplateStore& templates) {
     http::response<http::string_body> response;
     response.version(request.version());
     response.keep_alive(false);
@@ -117,6 +120,52 @@ http::response<http::string_body> make_response(const http::request<http::string
             response.result(http::status::method_not_allowed);
             response.set(http::field::allow, "POST");
             response.body() = error_json("method_not_allowed");
+        }
+    } else if (target == "/api/templates" ||
+               (target.rfind("/api/templates/", 0) == 0 &&
+                webwb::ProjectStore::valid_project_id(target.substr(15)))) {
+        const bool collection = target == "/api/templates";
+        const std::string id = collection ? "" : target.substr(15);
+        try {
+            if (collection && method == http::verb::get) {
+                JsonObject output(json_object_new_object(), json_object_put);
+                json_object* items = json_object_new_array();
+                for (const auto& item : templates.list()) {
+                    JsonObject obj(json_tokener_parse(item.document.c_str()), json_object_put);
+                    json_object_object_add(obj.get(), "id", json_object_new_string(item.id.c_str()));
+                    json_object_array_add(items, json_object_get(obj.get()));
+                }
+                json_object_object_add(output.get(), "templates", items);
+                response.result(http::status::ok);
+                response.body() = json_string(output.get());
+            } else if (collection && method == http::verb::post) {
+                const auto validation = webwb::validate_template(request.body());
+                if (!validation.valid) {
+                    response.result(http::status::bad_request);
+                    response.body() = error_json("invalid_template", validation.message);
+                } else {
+                    const auto new_id = templates.create(request.body());
+                    response.result(http::status::created);
+                    response.set(http::field::location, "/api/templates/" + new_id);
+                    JsonObject output(json_object_new_object(), json_object_put);
+                    json_object_object_add(output.get(), "id", json_object_new_string(new_id.c_str()));
+                    response.body() = json_string(output.get());
+                }
+            } else if (!collection && method == http::verb::delete_) {
+                templates.remove(id);
+                response.result(http::status::no_content);
+                response.body().clear();
+            } else {
+                response.result(http::status::method_not_allowed);
+                response.set(http::field::allow, collection ? "GET, POST" : "DELETE");
+                response.body() = error_json("method_not_allowed");
+            }
+        } catch (const webwb::StoreError& error) {
+            const bool missing = error.kind() == webwb::StoreErrorKind::not_found;
+            const bool full = error.kind() == webwb::StoreErrorKind::limit_reached;
+            response.result(missing ? http::status::not_found : full ? http::status::conflict : http::status::internal_server_error);
+            response.body() = missing ? error_json("not_found") : full ? error_json("template_limit") : error_json("storage_error");
+            if (!missing && !full) std::cerr << "Template storage error: " << error.what() << '\n';
         }
     } else if (target == "/api/projects" ||
                (target.rfind("/api/projects/", 0) == 0 &&
@@ -186,7 +235,8 @@ http::response<http::string_body> make_response(const http::request<http::string
     return response;
 }
 
-void serve_connection(tcp::socket socket, webwb::ProjectStore& store) {
+void serve_connection(tcp::socket socket, webwb::ProjectStore& store,
+                      webwb::TemplateStore& templates) {
     beast::tcp_stream stream(std::move(socket));
     stream.expires_after(std::chrono::seconds(5));
     beast::flat_buffer buffer;
@@ -198,7 +248,7 @@ void serve_connection(tcp::socket socket, webwb::ProjectStore& store) {
     http::read(stream, buffer, parser, error);
     if (!error) {
         const auto request = parser.release();
-        const auto response = make_response(request, store);
+        const auto response = make_response(request, store, templates);
         http::write(stream, response, error);
     }
     if (error && error != http::error::end_of_stream) {
@@ -210,6 +260,7 @@ void serve_connection(tcp::socket socket, webwb::ProjectStore& store) {
 
 int run(const Configuration& config) {
     webwb::ProjectStore store(config.data_directory);
+    webwb::TemplateStore templates(config.data_directory);
     asio::io_context io_context{1};
     tcp::acceptor listener(io_context);
     listener.open(tcp::v4());
@@ -219,6 +270,7 @@ int run(const Configuration& config) {
 
     std::cout << "WEBWB backend listening at http://127.0.0.1:" << config.port << '\n'
               << "Projects directory: " << config.data_directory << "/projects\n"
+              << "Templates directory: " << config.data_directory << "/templates\n"
               << "Stop with Ctrl+C.\n" << std::flush;
 
     for (;;) {
@@ -230,7 +282,7 @@ int run(const Configuration& config) {
             continue;
         }
         try {
-            serve_connection(std::move(socket), store);
+            serve_connection(std::move(socket), store, templates);
         } catch (const std::exception& ex) {
             std::cerr << "HTTP request error: " << ex.what() << '\n';
         }

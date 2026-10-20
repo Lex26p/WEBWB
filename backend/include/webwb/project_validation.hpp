@@ -18,4 +18,7 @@ struct ValidationResult {
 // This function does not normalize, modify, or save project data.
 ValidationResult validate_project(std::string_view source);
 
+// Template body: {"name": "...", "node": {<existing editor node>}}.
+ValidationResult validate_template(std::string_view source);
+
 } // namespace webwb

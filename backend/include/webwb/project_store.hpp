@@ -13,7 +13,7 @@ struct ProjectSummary {
     std::string title;
 };
 
-enum class StoreErrorKind { not_found, io_error };
+enum class StoreErrorKind { not_found, io_error, conflict, limit_reached };
 
 class StoreError : public std::runtime_error {
 public:

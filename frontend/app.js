@@ -85,6 +85,8 @@
       if (!Array.isArray(projectList)) throw new Error('Неправильный список проектов');
       serverReady = true;
       populateProjectList();
+      try { await refreshTemplates(); }
+      catch (error) { showToast('Не удалось загрузить шаблоны: ' + error.message); }
     } catch (error) {
       serverReady = false;
       projectList = [];
@@ -141,9 +143,23 @@
       alert('Не удалось открыть проект с сервера: ' + error.message);
     } finally { apiBusy = false; updateProjectButtons(); }
   }
-  function saveTemplates() {
-    try { localStorage.setItem(TEMPLATES_KEY, JSON.stringify(templates)); }
-    catch { showToast('Не удалось сохранить шаблоны в браузере'); }
+  // One-time migration of previously saved browser templates. An incomplete
+  // migration is retried safely: existing server copies are compared first.
+  async function refreshTemplates() {
+    if (!serverReady) return;
+    const existing = await API.listTemplates();
+    if (!Array.isArray(existing)) throw new Error('Сервер вернул некорректные шаблоны');
+    const legacy = loadTemplates();
+    for (const item of legacy) {
+      if (existing.some(t => t.name === item.name && JSON.stringify(t.node) === JSON.stringify(item.node))) continue;
+      const result = await API.createTemplate({name:item.name, node:item.node});
+      existing.push({id:result.id, name:item.name, node:item.node});
+    }
+    if (legacy.length) {
+      try { localStorage.removeItem(TEMPLATES_KEY); } catch (_) { /* необязательно */ }
+    }
+    templates = await API.listTemplates();
+    renderTemplates();
   }
   function ancestorDepth(id, node = project.root, depth = 0) {
     if (node.id === id) return depth;
@@ -242,17 +258,35 @@
     showToast('Элемент скопирован. Выберите контейнер и нажмите «Вставить»');
   }
 
-  function saveSelectionAsTemplate() {
+  async function saveSelectionAsTemplate() {
+    if (!serverReady) return showToast('Для сохранения шаблона требуется сервер');
+    if (apiBusy) return;
     const info = locate(selectedId);
     if (!info) return;
     const title = prompt('Название шаблона', info.node.name || TYPE_NAMES[info.node.type]);
     if (title === null) return;
     const name = title.trim().slice(0,80);
     if (!name) return showToast('Введите название шаблона');
-    if (templates.length >= 30) return showToast('Можно сохранить не больше 30 шаблонов');
-    templates.push({id:uid(), name, node:deepCopy(info.node)});
-    saveTemplates(); renderTemplates();
-    showToast('Шаблон сохранён вместе со вложенными элементами');
+    try {
+      const result = await API.createTemplate({name, node:deepCopy(info.node)});
+      if (!result || !/^[0-9a-f]{32}$/.test(result.id)) throw new Error('Сервер не вернул ID шаблона');
+      await refreshTemplates();
+      showToast('Шаблон сохранён на сервере');
+    } catch (error) {
+      showToast('Ошибка сохранения шаблона: ' + error.message);
+    }
+  }
+
+  async function deleteTemplate(id) {
+    if (!serverReady) return showToast('Сервер недоступен');
+    try {
+      await API.deleteTemplate(id);
+      templates = templates.filter(t => t.id !== id);
+      renderTemplates();
+      showToast('Шаблон удалён');
+    } catch (error) {
+      showToast('Ошибка удаления: ' + error.message);
+    }
   }
 
   function selectedInsertionPoint() {
@@ -415,8 +449,7 @@
   $('#templatesList').addEventListener('click', e => {
     const del = e.target.closest('[data-template-delete]');
     if (del) {
-      templates = templates.filter(t => t.id !== del.dataset.templateDelete);
-      saveTemplates(); renderTemplates(); showToast('Шаблон удалён'); return;
+      deleteTemplate(del.dataset.templateDelete); return;
     }
   });
   $('#tree').addEventListener('dragstart',e => {

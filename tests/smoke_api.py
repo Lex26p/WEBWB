@@ -137,12 +137,39 @@ def test_api(binary):
             require(status == 200 and response.get('title') == modified['title'],
                     'Неверный запрос не повредил проект')
 
+            # Шаблоны хранятся на backend отдельно от проектов.
+            sample_template = {'name': 'Панель освещения', 'node': project['root']['children'][0]}
+            status, response = request(port, 'GET', '/api/templates')
+            require(status == 200 and response.get('templates') == [], 'Пустой список шаблонов')
+            status, response = request(port, 'POST', '/api/templates', sample_template)
+            template_id = response.get('id') if isinstance(response, dict) else None
+            require(status == 201 and isinstance(template_id, str) and len(template_id) == 32,
+                    'Создание серверного шаблона', f'HTTP {status}, {response!r}')
+            status, response = request(port, 'GET', '/api/templates')
+            require(status == 200 and len(response['templates']) == 1 and
+                    response['templates'][0]['id'] == template_id and
+                    response['templates'][0]['node'] == sample_template['node'],
+                    'Чтение шаблона со вложенными элементами')
+            status, response = request(port, 'POST', '/api/templates', {'name': 'Bad', 'node': {'type': 'unknown'}})
+            require(status == 400 and response.get('error') == 'invalid_template', 'Некорректный шаблон отклоняется')
+            status, response = request(port, 'GET', '/api/templates')
+            require(status == 200 and len(response['templates']) == 1, 'Неверный запрос не повреждает шаблон')
+
             stop_server(process)
             log.close()
             process, log = start_server(binary, port, data_dir)
             status, response = request(port, 'GET', endpoint)
             require(status == 200 and response.get('title') == modified['title'],
                     'Проект сохранился после перезапуска backend')
+            status, response = request(port, 'GET', '/api/templates')
+            require(status == 200 and len(response['templates']) == 1 and
+                    response['templates'][0]['id'] == template_id,
+                    'Шаблон сохранился после перезапуска backend')
+            status, response = request(port, 'DELETE', '/api/templates/'+template_id)
+            require(status == 204, 'Удаление серверного шаблона')
+            status, response = request(port, 'GET', '/api/templates')
+            require(status == 200 and response['templates'] == [], 'Удалённый шаблон отсутствует')
+
 
             status, _ = request(port, 'DELETE', endpoint)
             require(status == 204, 'Удаление проекта')

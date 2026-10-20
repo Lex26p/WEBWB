@@ -15,9 +15,14 @@ cmake --build "$BUILD_DIR" --clean-first -j2
 echo '== Проверка версии backend =='
 if ! "$BINARY" --help | grep -Fq 'GET/POST /api/projects'; then
   echo '[ERROR] Backend не содержит API проектов (шаг 06).' >&2
-  echo 'Проверь, что архив WEBWB-step-06-with-tests.zip распакован поверх репозитория.' >&2
+  echo 'Проверь, что архив актуального шага распакован поверх репозитория.' >&2
   echo 'Текущая справка backend:' >&2
   "$BINARY" --help >&2
+  exit 1
+fi
+
+if ! "$BINARY" --help | grep -Fq 'GET/POST /api/templates'; then
+  echo '[ERROR] Backend не содержит API шаблонов (шаг 08).' >&2
   exit 1
 fi
 
@@ -27,7 +32,7 @@ ctest --test-dir "$BUILD_DIR" --output-on-failure
 echo '== Проверка HTTP API =='
 python3 "$ROOT/tests/smoke_api.py" "$BINARY"
 
-echo '== WEBWB: все проверки пройдены =='
-
 echo '== Проверка совместного HTTP-доступа к редактору и API =='
 python3 "$ROOT/tests/smoke_frontend.py" "$BINARY"
+
+echo '== WEBWB: все проверки пройдены =='
