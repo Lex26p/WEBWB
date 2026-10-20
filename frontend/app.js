@@ -48,9 +48,14 @@
   const uid = () => 'el_' + Math.random().toString(36).slice(2, 10);
   const clamp = (n, min, max) => Math.min(max, Math.max(min, Number(n) || 0));
 
-  // Для круглых, а не эллиптических углов используем px. Старые значения в %
-  // трактуются как число на ползунке: например, 16% становится 16px.
-  const normalizeRadius = (value) => Math.round(clamp(parseFloat(value) || 0, 0, 50)) + 'px';
+  // Обычное скругление: 0–50px. Отдельный режим максимально круглых
+  // углов использует большой CSS-радиус: квадрат становится кругом,
+  // прямоугольник — капсулой, без эллиптических углов от процентов.
+  const FULL_RADIUS = '9999px';
+  function normalizeRadius(value) {
+    if (String(value).trim() === FULL_RADIUS) return FULL_RADIUS;
+    return Math.round(clamp(parseFloat(value) || 0, 0, 50)) + 'px';
+  }
 
   function baseStyle() {
     return {
@@ -394,7 +399,7 @@
     background: 'Цвет фона. Вариант «Прозрачный» убирает заливку.',
     borderWidth: 'Толщина рамки по периметру элемента. Значение 0 отключает рамку.',
     borderColor: 'Цвет рамки. Видно, если толщина рамки больше нуля.',
-    borderRadius: 'Скругление углов в пикселях, от 0 до 50. Пиксели сохраняют круглую форму углов даже у прямоугольных элементов.',
+    borderRadius: 'Обычное скругление — от 0 до 50 px. Режим «Полное скругление» делает квадрат кругом, а прямоугольник капсулой независимо от размеров.',
     x: 'Горизонтальная координата относительно свободного контейнера.',
     y: 'Вертикальная координата относительно свободного контейнера.',
     layout: 'Как располагать элементы внутри контейнера: сверху вниз, слева направо либо в заданных координатах.',
@@ -441,10 +446,12 @@
     return `<div class="field"><div class="field-heading"><span class="field-label">${esc(label)}</span>${help(label,TIPS[key])}</div><div class="size-control"><input class="field-input" type="number" step="1" min="0" max="99999" value="${esc(number)}" aria-label="${esc(label)} — число" data-size-number="style.${esc(key)}" ${unit === 'auto' ? 'disabled' : ''}><select class="field-select" data-size-unit="style.${esc(key)}" aria-label="${esc(label)} — единица">${[['auto','Авто'],['px','px'],['%','%']].map(([v,n]) => `<option value="${v}" ${unit === v ? 'selected' : ''}>${n}</option>`).join('')}</select></div></div>`;
   }
   function radiusField(raw) {
-    const value = parseInt(normalizeRadius(raw), 10);
+    const full = normalizeRadius(raw) === FULL_RADIUS;
+    const value = full ? 50 : parseInt(normalizeRadius(raw), 10);
     return `<div class="field"><div class="field-heading"><label class="field-label" for="radiusRange">Скругление</label>${help('Скругление',TIPS.borderRadius)}</div>
-      <div class="radius-row"><input id="radiusRange" class="radius-range" data-prop="style.borderRadius" type="range" min="0" max="50" step="1" value="${value}">
-      <output class="radius-value" for="radiusRange">${value}px</output></div></div>`;
+      <div class="radius-row"><input id="radiusRange" class="radius-range" data-prop="style.borderRadius" type="range" min="0" max="50" step="1" value="${value}" ${full ? 'disabled' : ''}>
+      <output class="radius-value" for="radiusRange">${full ? 'Макс.' : value + 'px'}</output></div>
+      <label class="checkbox-field transparent-switch"><input type="checkbox" data-prop="radiusFull" ${full ? 'checked' : ''}> Полное скругление</label></div>`;
   }
   function spacingFields(kind,label) {
     const node = locate(selectedId).node;
@@ -736,6 +743,10 @@
     } else if (target.dataset.sizeNumber) {
       const unit = target.closest('.size-control').querySelector('[data-size-unit]').value;
       node.style[path.slice(6)] = unit === 'auto' ? 'auto' : `${clamp(value,0,99999)}${unit}`;
+    } else if (path === 'radiusFull') {
+      // При выключении полного скругления возвращаемся к верхней
+      // границе обычной шкалы; пользователь может уменьшить её ползунком.
+      node.style.borderRadius = value ? FULL_RADIUS : '50px';
     } else if (path === 'layoutMode') {
       if (value === 'free') {
         node.style.display = 'block'; node.style.position = 'relative';
