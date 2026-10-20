@@ -1,4 +1,4 @@
-/* WEBWB: панель проекта + только чтение MQTT-состояний (шаг 11). */
+/* WEBWB: панель проекта, MQTT-состояния и команды (шаг 12). */
 (() => {
   'use strict';
   const canvas = document.getElementById('viewerCanvas');
@@ -60,14 +60,26 @@
       const project = window.WBPanelModel.normalizeProject(raw);
       document.title = project.title + ' — WEBWB';
       const topicMap = subscriptions(project.root);
+      let actionCount = 0;
+      function countActions(node) {
+        if (['button', 'switch', 'slider'].includes(node.type) &&
+            window.WBPanelMQTT.validTopic(node.mqtt?.actionTopic)) actionCount++;
+        if (node.type === 'container') node.children.forEach(countActions);
+      }
+      countActions(project.root);
       canvas.replaceChildren(window.WBPanelRenderer.createElement(project.root, {
         interactive: true,
-        onDemoAction: () => { hint.textContent = 'Демонстрация: MQTT-команда не отправлена'; }
+        onDemoAction: () => { hint.textContent = 'Демонстрация: MQTT-команда не настроена'; },
+        onAction: (node, payload) => {
+          const sent = mqttReader?.publish(node.mqtt?.actionTopic, String(payload)) || false;
+          if (!sent) hint.textContent = 'MQTT: команда не отправлена · нет соединения';
+          return sent;
+        }
       }));
       canvas.hidden = false;
       status.hidden = true;
       hint.hidden = false;
-      if (!topicMap.size) {
+      if (!topicMap.size && !actionCount) {
         hint.textContent = 'Демонстрационный просмотр · MQTT-топики не назначены';
         return;
       }
@@ -77,9 +89,10 @@
       mqttReader = window.WBPanelMQTT.createReader({
         url,
         topics: [...topicMap.keys()],
+        allowCommands: actionCount > 0,
         onMessage: (topic, value) => topicMap.get(topic)?.forEach(node => applyStatus(node, value)),
         onState: state => {
-          hint.textContent = state === 'connected' ? 'MQTT: подключено · только чтение' :
+          hint.textContent = state === 'connected' ? 'MQTT: подключено' :
             state === 'connecting' ? 'MQTT: подключение…' : 'MQTT: нет соединения · повторная попытка';
         }
       });

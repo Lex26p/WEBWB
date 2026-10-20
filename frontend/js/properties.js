@@ -35,7 +35,11 @@
     sliderValue: 'Положение ползунка при открытии демонстрационного просмотра.',
     image: 'Картинка хранится на контроллере. Загрузите PNG, JPEG или WebP до 1 МиБ.',
     mqttTopic: 'Полный MQTT-топик состояния, например /devices/demo/controls/Temperature. Пустое поле отключает привязку.',
-    mqttValue: 'Точное значение MQTT, при котором кнопка подсвечивается или переключатель включён. По умолчанию 1.'
+    mqttValue: 'Точное значение MQTT, при котором кнопка подсвечивается или переключатель включён. По умолчанию 1.',
+    mqttAction: 'Топик, в который отправляется команда при действии пользователя в режиме просмотра. Обычно /devices/.../controls/.../on.',
+    mqttActionValue: 'Значение, отправляемое при нажатии кнопки. По умолчанию 1.',
+    mqttOn: 'Команда для включения переключателя. По умолчанию 1.',
+    mqttOff: 'Команда для выключения переключателя. По умолчанию 0.'
   };
   function help(label, tip) {
     return `<button type="button" class="help-button" data-help="${esc(tip)}" aria-label="Подсказка: ${esc(label)}">i</button>`;
@@ -58,7 +62,7 @@
     }
     return `<div class="field"><div class="field-heading"><label class="field-label" for="${id}">${esc(label)}</label>${help(label,opts.tip || '')}</div>${control}</div>`;
   }
-  const expandedGroups = new Set(['Основное','Размеры','Контейнер','Текст','Кнопка','Переключатель','Ползунок','Изображение', 'MQTT · состояние']);
+  const expandedGroups = new Set(['Основное','Размеры','Контейнер','Текст','Кнопка','Переключатель','Ползунок','Изображение', 'MQTT · состояние','MQTT · действие']);
   const section = (label, content) => `<details class="prop-section" data-group="${esc(label)}" ${expandedGroups.has(label) ? 'open' : ''}><summary>${esc(label)}</summary><div class="prop-section-content">${content}</div></details>`;
   function sizeField(label, key, raw) {
     const parsed = /^([0-9]+(?:\.[0-9]+)?)(px|%)$/.exec(String(raw));
@@ -158,8 +162,18 @@
       let fields = field('Топик состояния', 'mqtt.statusTopic', mqtt.statusTopic || '', {tip:TIPS.mqttTopic});
       if (['button','switch'].includes(node.type))
         fields += field('Активное значение', 'mqtt.activeValue', mqtt.activeValue ?? '1', {tip:TIPS.mqttValue});
-      fields += '<p class="field-note">Только чтение. Команды управления добавим на шаге 12.</p>';
       html += section('MQTT · состояние', fields);
+      if (node.type !== 'text') {
+        let actions = field('Топик команды', 'mqtt.actionTopic', mqtt.actionTopic || '', {tip:TIPS.mqttAction});
+        if (node.type === 'button')
+          actions += field('Значение команды', 'mqtt.actionValue', mqtt.actionValue ?? '1', {tip:TIPS.mqttActionValue});
+        if (node.type === 'switch') {
+          actions += field('Значение ВКЛ', 'mqtt.onValue', mqtt.onValue ?? '1', {tip:TIPS.mqttOn});
+          actions += field('Значение ВЫКЛ', 'mqtt.offValue', mqtt.offValue ?? '0', {tip:TIPS.mqttOff});
+        }
+        if (node.type === 'slider') actions += '<p class="field-note">Отправляется число при отпускании ползунка.</p>';
+        html += section('MQTT · действие', actions);
+      }
     }
     $('#properties').innerHTML = html;
   }
@@ -207,18 +221,35 @@
       } else {
         node.style[key] = value;
       }
-    } else if (path === 'mqtt.statusTopic') {
+    } else if (path === 'mqtt.statusTopic' || path === 'mqtt.actionTopic') {
+      const key = path.split('.')[1];
       const topic = String(value).trim();
-      if (!topic || new TextEncoder().encode(topic).length > 256 || /[\u0000+#]/.test(topic)) {
-        if (!topic) delete node.mqtt;
-        else { target.value = node.mqtt?.statusTopic || ''; return; }
-      } else {
-        node.mqtt = {...node.mqtt, statusTopic: topic};
-        if (['button','switch'].includes(node.type) && typeof node.mqtt.activeValue !== 'string')
-          node.mqtt.activeValue = '1';
+      if (topic && (new TextEncoder().encode(topic).length > 256 || /[\u0000+#]/.test(topic))) {
+        target.value = node.mqtt?.[key] || '';
+        return;
       }
-    } else if (path === 'mqtt.activeValue') {
-      if (node.mqtt?.statusTopic) node.mqtt.activeValue = String(value).slice(0,120);
+      const binding = {...node.mqtt};
+      if (topic) binding[key] = topic;
+      else delete binding[key];
+      if (key === 'statusTopic') {
+        if (topic && ['button','switch'].includes(node.type) && typeof binding.activeValue !== 'string')
+          binding.activeValue = '1';
+        if (!topic) delete binding.activeValue;
+      } else {
+        if (topic && node.type === 'button' && typeof binding.actionValue !== 'string') binding.actionValue = '1';
+        if (topic && node.type === 'switch') {
+          if (typeof binding.onValue !== 'string') binding.onValue = '1';
+          if (typeof binding.offValue !== 'string') binding.offValue = '0';
+        }
+        if (!topic) { delete binding.actionValue; delete binding.onValue; delete binding.offValue; }
+      }
+      if (Object.keys(binding).length) node.mqtt = binding;
+      else delete node.mqtt;
+    } else if (['mqtt.activeValue','mqtt.actionValue','mqtt.onValue','mqtt.offValue'].includes(path)) {
+      const key = path.split('.')[1];
+      const requiresStatus = key === 'activeValue';
+      if (node.mqtt?.[requiresStatus ? 'statusTopic' : 'actionTopic'])
+        node.mqtt[key] = String(value).slice(0,120);
     } else if (path === 'name' || path === 'text') {
       node[path] = String(value).slice(0,10000);
     } else if (path === 'checked') {

@@ -148,30 +148,58 @@ bool validate_node(json_object* node, const std::string& location, int depth, St
             return state.reject(location, "invalid slider min/max/step/value");
     }
 
-    // MQTT is optional and strictly read-only in step 11. Only state bindings.
+    // MQTT state and command bindings are optional. Commands belong only to controls.
     json_object* mqtt = nullptr;
     if (get_field(node, "mqtt", mqtt)) {
         if (type != "text" && type != "button" && type != "switch" && type != "slider")
             return state.reject(location, "MQTT binding is not supported for this element");
         if (!json_object_is_type(mqtt, json_type_object))
             return state.reject(location, "mqtt must be an object");
-        json_object* topic = nullptr;
-        if (!get_field(mqtt, "statusTopic", topic) || !is_string(topic, 256) ||
-            json_object_get_string_len(topic) > 256)
-            return state.reject(location, "mqtt.statusTopic must be a string up to 256 characters");
-        const std::string topic_name = json_object_get_string(topic);
-        if (topic_name.empty() || topic_name.find_first_of("+#") != std::string::npos)
-            return state.reject(location, "mqtt.statusTopic must be an exact topic (no wildcards)");
-        json_object* active_value = nullptr;
-        if (get_field(mqtt, "activeValue", active_value)) {
-            if (type != "button" && type != "switch")
-                return state.reject(location, "mqtt.activeValue is only for buttons and switches");
-            if (!is_string(active_value, 120))
-                return state.reject(location, "mqtt.activeValue must be a string up to 120 characters");
+        json_object* state_topic = nullptr;
+        json_object* action_topic = nullptr;
+        const bool has_state = get_field(mqtt, "statusTopic", state_topic);
+        const bool has_action = get_field(mqtt, "actionTopic", action_topic);
+        if (!has_state && !has_action)
+            return state.reject(location, "mqtt requires a statusTopic or actionTopic");
+        const auto check_topic = [&](json_object* value, std::string_view field) -> bool {
+            if (!is_string(value, 256) || json_object_get_string_len(value) == 0)
+                return state.reject(location, "mqtt." + std::string(field) + " must be a nonempty topic up to 256 bytes");
+            const std::string topic_name = json_object_get_string(value);
+            if (topic_name.find_first_of("+#") != std::string::npos)
+                return state.reject(location, "mqtt." + std::string(field) + " must not include wildcards");
+            return true;
+        };
+        if (has_state && !check_topic(state_topic, "statusTopic")) return false;
+        if (has_action && !check_topic(action_topic, "actionTopic")) return false;
+        if (has_action && type == "text")
+            return state.reject(location, "text elements cannot publish MQTT commands");
+        json_object* value = nullptr;
+        if (get_field(mqtt, "activeValue", value)) {
+            if (!has_state || (type != "button" && type != "switch"))
+                return state.reject(location, "mqtt.activeValue is only for button/switch status");
+            if (!is_string(value, 120))
+                return state.reject(location, "mqtt.activeValue must be a string up to 120 bytes");
         }
-        json_object_object_foreach(mqtt, key, value) {
-            (void)value;
-            if (std::string_view(key) != "statusTopic" && std::string_view(key) != "activeValue")
+        if (get_field(mqtt, "actionValue", value)) {
+            if (!has_action || type != "button")
+                return state.reject(location, "mqtt.actionValue is only for buttons with actionTopic");
+            if (!is_string(value, 120))
+                return state.reject(location, "mqtt.actionValue must be a string up to 120 bytes");
+        }
+        for (const auto* field : {"onValue", "offValue"}) {
+            if (get_field(mqtt, field, value)) {
+                if (!has_action || type != "switch")
+                    return state.reject(location, "MQTT onValue/offValue are only for switches with actionTopic");
+                if (!is_string(value, 120))
+                    return state.reject(location, "MQTT onValue/offValue must be strings up to 120 bytes");
+            }
+        }
+        json_object_object_foreach(mqtt, key, current) {
+            (void)current;
+            const std::string_view key_view(key);
+            if (key_view != "statusTopic" && key_view != "activeValue" &&
+                key_view != "actionTopic" && key_view != "actionValue" &&
+                key_view != "onValue" && key_view != "offValue")
                 return state.reject(location, "mqtt contains an unsupported property");
         }
     }

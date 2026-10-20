@@ -171,14 +171,21 @@
       }
       if (['text', 'button', 'switch', 'slider'].includes(node.type) &&
           source.mqtt && typeof source.mqtt === 'object') {
-        const topic = source.mqtt.statusTopic;
-        const active = source.mqtt.activeValue;
-        if (typeof topic === 'string' && topic.length > 0 &&
-            new TextEncoder().encode(topic).length <= 256 && !/[\u0000+#]/.test(topic)) {
-          node.mqtt = {statusTopic: topic};
-          if (['button', 'switch'].includes(node.type))
-            node.mqtt.activeValue = typeof active === 'string' ? active.slice(0, 120) : '1';
+        const mqtt = source.mqtt;
+        const valid = topic => typeof topic === 'string' && topic.length > 0 &&
+          new TextEncoder().encode(topic).length <= 256 && !/[\u0000+#]/.test(topic);
+        const binding = {};
+        if (valid(mqtt.statusTopic)) binding.statusTopic = mqtt.statusTopic;
+        if (node.type !== 'text' && valid(mqtt.actionTopic)) binding.actionTopic = mqtt.actionTopic;
+        if (binding.statusTopic && ['button', 'switch'].includes(node.type))
+          binding.activeValue = typeof mqtt.activeValue === 'string' ? mqtt.activeValue.slice(0, 120) : '1';
+        if (binding.actionTopic && node.type === 'button')
+          binding.actionValue = typeof mqtt.actionValue === 'string' ? mqtt.actionValue.slice(0, 120) : '1';
+        if (binding.actionTopic && node.type === 'switch') {
+          binding.onValue = typeof mqtt.onValue === 'string' ? mqtt.onValue.slice(0, 120) : '1';
+          binding.offValue = typeof mqtt.offValue === 'string' ? mqtt.offValue.slice(0, 120) : '0';
         }
+        if (Object.keys(binding).length) node.mqtt = binding;
       }
       if (node.type === 'slider') {
         node.min = clamp(source.min ?? 0, -10000, 10000);

@@ -29,15 +29,24 @@
       el = document.createElement('button'); el.type = 'button';
       el.className = 'node wb-button'; el.textContent = node.text;
       if (!interactive) el.tabIndex = -1;
+      else if (node.mqtt?.actionTopic) el.addEventListener('click', () => {
+        options.onAction?.(node, node.mqtt.actionValue ?? '1');
+      });
       else if (!node.mqtt?.statusTopic) el.addEventListener('click', () => {
         el.classList.toggle('is-active');
-        if (options.onDemoAction) options.onDemoAction();
+        options.onDemoAction?.();
       });
     } else if (node.type === 'switch') {
       el = document.createElement('label'); el.className = 'node wb-switch';
       el.setAttribute('aria-label', node.name || 'Переключатель');
       const checkbox = document.createElement('input'); checkbox.type = 'checkbox';
-      checkbox.checked = !!node.checked; checkbox.disabled = !interactive || !!node.mqtt?.statusTopic;
+      checkbox.checked = !!node.checked;
+      const hasAction = !!node.mqtt?.actionTopic;
+      checkbox.disabled = !interactive || (!!node.mqtt?.statusTopic && !hasAction);
+      if (interactive && hasAction) checkbox.addEventListener('change', () => {
+        const successful = options.onAction?.(node, checkbox.checked ? (node.mqtt.onValue ?? '1') : (node.mqtt.offValue ?? '0'));
+        if (!successful) checkbox.checked = !checkbox.checked;
+      });
       const toggle = document.createElement('span'); toggle.className = 'switch-ui';
       el.append(checkbox, toggle);
     } else if (node.type === 'slider') {
@@ -47,8 +56,12 @@
       const value = document.createElement('span'); value.className = 'slider-value'; value.textContent = String(node.value);
       caption.append(label, value);
       const slider = document.createElement('input'); slider.type = 'range'; slider.min = String(node.min ?? 0); slider.max = String(node.max ?? 100); slider.step = String(node.step ?? 1); slider.value = String(node.value);
-      slider.disabled = !interactive || !!node.mqtt?.statusTopic;
+      const hasAction = !!node.mqtt?.actionTopic;
+      slider.disabled = !interactive || (!!node.mqtt?.statusTopic && !hasAction);
       slider.addEventListener('input', () => { value.textContent = slider.value; });
+      if (interactive && hasAction) slider.addEventListener('change', () => {
+        options.onAction?.(node, slider.value);
+      });
       el.append(caption, slider);
     } else if (node.type === 'image') {
       el = document.createElement('img'); el.className = 'node wb-image';

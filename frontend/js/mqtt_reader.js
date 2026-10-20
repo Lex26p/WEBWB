@@ -1,6 +1,4 @@
-/* WEBWB: MQTT 3.1.1 over WebSocket. Только CONNECT / SUBSCRIBE / PINGREQ.
- * Публикация команд намеренно отсутствует до шага 12.
- */
+/* WEBWB: MQTT 3.1.1 over WebSocket, QoS 0, состояния и команды. */
 (() => {
   'use strict';
   const encoder = new TextEncoder();
@@ -26,6 +24,11 @@
     const body = [0, 1]; // Packet identifier = 1; соединение одно, SUBSCRIBE один.
     for (const topic of topics) body.push(...mqttString(topic), 0); // QoS 0.
     return packet(0x82, body);
+  }
+  function publishPacket(topic, payload) {
+    const value = encoded(payload);
+    if (!validTopic(topic) || value.length > 4096) throw new Error('Некорректная MQTT-команда');
+    return packet(0x30, [...mqttString(topic), ...value]); // QoS 0, retain=false
   }
   function resolveURL(raw, currentLocation) {
     if (!raw) return new URL('/mqtt', currentLocation.href).href.replace(/^http/, 'ws');
@@ -65,6 +68,7 @@
     let retry = null;
     let keepalive = null;
     let closed = false;
+    let connected = false;
     let incoming = new Uint8Array(0);
     const notify = value => options.onState?.(value);
     function clearTimers() {
@@ -76,7 +80,8 @@
       const kind = type >> 4;
       if (kind === 2) { // CONNACK
         if (data.length !== 2 || data[1] !== 0) { socket?.close(); return; }
-        socket.send(subscribePacket(topics));
+        if (topics.length) socket.send(subscribePacket(topics));
+        connected = true;
         notify('connected');
         keepalive = setInterval(() => {
           if (socket?.readyState === WebSocket.OPEN) socket.send(packet(0xc0, []));
@@ -96,6 +101,7 @@
     function connect() {
       if (closed) return;
       incoming = new Uint8Array(0);
+      connected = false;
       notify('connecting');
       try { socket = new WebSocket(options.url, ['mqtt']); }
       catch (_) { notify('disconnected'); scheduleRetry(); return; }
@@ -113,15 +119,21 @@
         try { incoming = readPackets(next, handlePacket); }
         catch (_) { socket.close(); }
       };
-      socket.onclose = () => { clearTimers(); notify('disconnected'); scheduleRetry(); };
+      socket.onclose = () => { connected = false; clearTimers(); if (!closed) { notify('disconnected'); scheduleRetry(); } };
       socket.onerror = () => { /* onclose сообщает о состоянии и запускает переподключение. */ };
     }
     function scheduleRetry() {
       if (!closed && retry === null) retry = setTimeout(() => { retry = null; connect(); }, 3000);
     }
     return {
-      start() { if (topics.length && !closed) connect(); },
-      stop() { closed = true; clearTimers(); if (socket) socket.close(); }
+      start() { if (!closed && (topics.length || options.allowCommands)) connect(); },
+      publish(topic, value) {
+        if (!connected || socket?.readyState !== WebSocket.OPEN) return false;
+        if (typeof value !== 'string') return false;
+        try { socket.send(publishPacket(topic, value)); return true; }
+        catch (_) { return false; }
+      },
+      stop() { closed = true; connected = false; clearTimers(); if (socket) socket.close(); }
     };
   }
   window.WBPanelMQTT = Object.freeze({createReader, resolveURL, validTopic});
