@@ -2,12 +2,14 @@
 #include <boost/beast.hpp>
 #include <json-c/json.h>
 
+#include "webwb/project_store.hpp"
 #include "webwb/project_validation.hpp"
 
 #include <chrono>
 #include <cstddef>
 #include <exception>
 #include <iostream>
+#include <memory>
 #include <stdexcept>
 #include <string>
 #include <utility>
@@ -21,17 +23,19 @@ namespace {
 
 struct Configuration {
     unsigned short port = 8088;
-    // Path is only stored at this stage. Disk writes arrive in later steps.
     std::string data_directory = "/mnt/data/webwb";
 };
 
+using JsonObject = std::unique_ptr<json_object, decltype(&json_object_put)>;
+
 void print_usage(const char* executable) {
-    std::cout << "WEBWB backend (HTTP skeleton)\n"
+    std::cout << "WEBWB backend\n"
               << "Usage: " << executable << " [--port 8088] [--data-dir PATH]\n"
               << "       " << executable << " --help\n"
               << "Server listens on 127.0.0.1 only.\n"
-              << "GET /api/health returns JSON.\n"
-              << "POST /api/projects/validate checks project JSON without saving.\n";
+              << "GET /api/health\n"
+              << "POST /api/projects/validate\n"
+              << "GET/POST /api/projects and GET/PUT/DELETE /api/projects/<id>\n";
 }
 
 unsigned short parse_port(const std::string& text) {
@@ -63,7 +67,21 @@ Configuration read_arguments(int argc, char* argv[]) {
     return config;
 }
 
-http::response<http::string_body> make_response(const http::request<http::string_body>& request) {
+std::string json_string(json_object* object) {
+    return json_object_to_json_string_ext(object, JSON_C_TO_STRING_PLAIN);
+}
+
+std::string error_json(const char* code, const std::string& message = {}) {
+    JsonObject output(json_object_new_object(), json_object_put);
+    json_object_object_add(output.get(), "error", json_object_new_string(code));
+    if (!message.empty()) {
+        json_object_object_add(output.get(), "detail", json_object_new_string(message.c_str()));
+    }
+    return json_string(output.get());
+}
+
+http::response<http::string_body> make_response(const http::request<http::string_body>& request,
+                                                webwb::ProjectStore& store) {
     http::response<http::string_body> response;
     response.version(request.version());
     response.keep_alive(false);
@@ -71,75 +89,138 @@ http::response<http::string_body> make_response(const http::request<http::string
     response.set(http::field::cache_control, "no-store");
     response.set(http::field::content_type, "application/json; charset=utf-8");
 
-    if (request.target() == "/api/health" && request.method() == http::verb::get) {
-        response.result(http::status::ok);
-        response.body() = R"({"status":"ok","service":"webwb"})";
-    } else if (request.target() == "/api/projects/validate" && request.method() == http::verb::post) {
-        const auto validation = webwb::validate_project(request.body());
-        response.result(validation.valid ? http::status::ok : http::status::bad_request);
-        if (validation.valid) {
-            response.body() = R"({"valid":true,"version":3})";
+    const std::string target(request.target());
+    const auto method = request.method();
+    if (target == "/api/health") {
+        if (method == http::verb::get) {
+            response.result(http::status::ok);
+            response.body() = R"({"status":"ok","service":"webwb"})";
         } else {
-            // Serialize the error using json-c to correctly escape diagnostic text.
-            json_object* json = json_object_new_object();
-            json_object_object_add(json, "valid", json_object_new_boolean(false));
-            json_object_object_add(json, "error", json_object_new_string("invalid_project"));
-            json_object_object_add(json, "detail", json_object_new_string(validation.message.c_str()));
-            response.body() = json_object_to_json_string_ext(json, JSON_C_TO_STRING_PLAIN);
-            json_object_put(json);
+            response.result(http::status::method_not_allowed);
+            response.set(http::field::allow, "GET");
+            response.body() = error_json("method_not_allowed");
         }
-    } else if (request.target() == "/api/projects/validate" || request.target() == "/api/health") {
-        response.result(http::status::method_not_allowed);
-        response.set(http::field::allow, request.target() == "/api/health" ? "GET" : "POST");
-        response.body() = R"({"error":"method_not_allowed"})";
+    } else if (target == "/api/projects/validate") {
+        if (method == http::verb::post) {
+            const auto validation = webwb::validate_project(request.body());
+            response.result(validation.valid ? http::status::ok : http::status::bad_request);
+            if (validation.valid) {
+                response.body() = R"({"valid":true,"version":3})";
+            } else {
+                JsonObject output(json_object_new_object(), json_object_put);
+                json_object_object_add(output.get(), "valid", json_object_new_boolean(false));
+                json_object_object_add(output.get(), "error", json_object_new_string("invalid_project"));
+                json_object_object_add(output.get(), "detail", json_object_new_string(validation.message.c_str()));
+                response.body() = json_string(output.get());
+            }
+        } else {
+            response.result(http::status::method_not_allowed);
+            response.set(http::field::allow, "POST");
+            response.body() = error_json("method_not_allowed");
+        }
+    } else if (target == "/api/projects" ||
+               (target.rfind("/api/projects/", 0) == 0 &&
+                webwb::ProjectStore::valid_project_id(target.substr(14)))) {
+        const bool collection = (target == "/api/projects");
+        const std::string id = collection ? "" : target.substr(14);
+        try {
+            if (collection && method == http::verb::get) {
+                JsonObject output(json_object_new_object(), json_object_put);
+                json_object* items = json_object_new_array();
+                for (const auto& entry : store.list()) {
+                    json_object* item = json_object_new_object();
+                    json_object_object_add(item, "id", json_object_new_string(entry.id.c_str()));
+                    json_object_object_add(item, "title", json_object_new_string(entry.title.c_str()));
+                    json_object_array_add(items, item);
+                }
+                json_object_object_add(output.get(), "projects", items);
+                response.result(http::status::ok);
+                response.body() = json_string(output.get());
+            } else if (collection && method == http::verb::post) {
+                const auto validation = webwb::validate_project(request.body());
+                if (!validation.valid) {
+                    response.result(http::status::bad_request);
+                    response.body() = error_json("invalid_project", validation.message);
+                } else {
+                    const auto new_id = store.create(request.body());
+                    response.result(http::status::created);
+                    response.set(http::field::location, "/api/projects/" + new_id);
+                    JsonObject output(json_object_new_object(), json_object_put);
+                    json_object_object_add(output.get(), "id", json_object_new_string(new_id.c_str()));
+                    response.body() = json_string(output.get());
+                }
+            } else if (!collection && method == http::verb::get) {
+                response.result(http::status::ok);
+                response.body() = store.read(id);
+            } else if (!collection && method == http::verb::put) {
+                const auto validation = webwb::validate_project(request.body());
+                if (!validation.valid) {
+                    response.result(http::status::bad_request);
+                    response.body() = error_json("invalid_project", validation.message);
+                } else {
+                    store.update(id, request.body());
+                    response.result(http::status::ok);
+                    response.body() = R"({"updated":true})";
+                }
+            } else if (!collection && method == http::verb::delete_) {
+                store.remove(id);
+                response.result(http::status::no_content);
+                response.body().clear();
+            } else {
+                response.result(http::status::method_not_allowed);
+                response.set(http::field::allow, collection ? "GET, POST" : "GET, PUT, DELETE");
+                response.body() = error_json("method_not_allowed");
+            }
+        } catch (const webwb::StoreError& error) {
+            const bool missing = error.kind() == webwb::StoreErrorKind::not_found;
+            response.result(missing ? http::status::not_found : http::status::internal_server_error);
+            response.body() = missing ? error_json("not_found") : error_json("storage_error");
+            if (!missing) std::cerr << "Project storage error: " << error.what() << '\n';
+        }
     } else {
         response.result(http::status::not_found);
-        response.body() = R"({"error":"not_found"})";
+        response.body() = error_json("not_found");
     }
 
     response.prepare_payload();
     return response;
 }
 
-void serve_connection(tcp::socket socket) {
+void serve_connection(tcp::socket socket, webwb::ProjectStore& store) {
     beast::tcp_stream stream(std::move(socket));
     stream.expires_after(std::chrono::seconds(5));
-
     beast::flat_buffer buffer;
     http::request_parser<http::string_body> parser;
     parser.header_limit(16 * 1024);
-    parser.body_limit(1024 * 1024);
+    parser.body_limit(webwb::kMaxProjectBytes);
 
     beast::error_code error;
     http::read(stream, buffer, parser, error);
     if (!error) {
         const auto request = parser.release();
-        auto response = make_response(request);
+        const auto response = make_response(request, store);
         http::write(stream, response, error);
     }
     if (error && error != http::error::end_of_stream) {
         std::cerr << "HTTP connection error: " << error.message() << '\n';
     }
-
     beast::error_code ignored;
     stream.socket().shutdown(tcp::socket::shutdown_both, ignored);
 }
 
 int run(const Configuration& config) {
+    webwb::ProjectStore store(config.data_directory);
     asio::io_context io_context{1};
     tcp::acceptor listener(io_context);
-
     listener.open(tcp::v4());
     listener.set_option(asio::socket_base::reuse_address(true));
     listener.bind(tcp::endpoint(asio::ip::make_address_v4("127.0.0.1"), config.port));
     listener.listen(asio::socket_base::max_listen_connections);
 
     std::cout << "WEBWB backend listening at http://127.0.0.1:" << config.port << '\n'
-              << "Data directory (not used yet): " << config.data_directory << '\n'
+              << "Projects directory: " << config.data_directory << "/projects\n"
               << "Stop with Ctrl+C.\n" << std::flush;
 
-    // Deliberately simple synchronous loop for the first API endpoint.
-    // The persistence API will introduce concurrent request handling if needed.
     for (;;) {
         tcp::socket socket(io_context);
         beast::error_code error;
@@ -148,7 +229,11 @@ int run(const Configuration& config) {
             std::cerr << "Accept error: " << error.message() << '\n';
             continue;
         }
-        serve_connection(std::move(socket));
+        try {
+            serve_connection(std::move(socket), store);
+        } catch (const std::exception& ex) {
+            std::cerr << "HTTP request error: " << ex.what() << '\n';
+        }
     }
 }
 

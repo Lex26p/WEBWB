@@ -6,11 +6,9 @@ WEBWB — лёгкий визуальный редактор панелей уп
 
 ## Текущее состояние
 
-**Шаги 01–04 подтверждены** (последний коммит: `283b3156c557efd5b05dfd224768dffb7570e86d`). **Шаг 05 подготовлен**: backend проверяет структуру JSON-проекта версии 3 через `POST /api/projects/validate`. Данные ещё не сохраняются на сервере; MQTT пока отсутствует.
+**Шаги 01–05 подтверждены**, последний коммит — `b261146f408dd8af5859cdd5c2cbda4b36b87707`. **Шаг 06 подготовлен к проверке:** C++ backend сохраняет JSON-проекты на диск и предоставляет API создания, чтения, списка, изменения и удаления. Frontend пока сохраняет проект в `localStorage`; подключение к API запланировано на шаг 07. MQTT пока нет.
 
-В прототипе редактора доступны контейнеры, текст, кнопки, переключатели и ползунки, Drag & Drop, дерево, CSS-свойства, шаблоны, экспорт/импорт JSON и демонстрационный просмотр. Редактор всё ещё использует `localStorage`.
-
-**Добавление элементов:** только перетаскиванием, без добавления по клику.
+В редакторе доступны контейнеры, текст, кнопки, переключатели и ползунки; Drag & Drop, CSS, копирование и шаблоны, экспорт/импорт JSON и демонстрационный просмотр. Добавление из палитры — только перетаскиванием.
 
 ## Быстрый запуск
 
@@ -20,21 +18,24 @@ WEBWB — лёгкий визуальный редактор панелей уп
 
 Подробная инструкция по интерфейсу прототипа: [docs/PROTOTYPE_V03.md](docs/PROTOTYPE_V03.md).
 
-## C++ backend (шаг 05)
+## C++ backend (шаг 06)
 
 Нужны CMake >= 3.16, компилятор C++17, заголовки Boost.Beast/Asio (`libboost-dev`), `json-c` (`libjson-c-dev`) и потоки Linux. В WSL:
 
 ```bash
 cd /mnt/c/Projects/WEBWB
-cmake -S . -B /tmp/webwb-build -DCMAKE_BUILD_TYPE=Debug
-cmake --build /tmp/webwb-build -j2
-ctest --test-dir /tmp/webwb-build --output-on-failure
-/tmp/webwb-build/webwb_backend --port 8088 --data-dir /tmp/webwb-data
+bash tests/check.sh
 ```
 
-Из второго терминала WSL проверить `curl -i http://127.0.0.1:8088/api/health` (ожидается `200 OK` и JSON). Остановить backend — `Ctrl+C`. Подробности: [backend/README.md](backend/README.md).
+Скрипт самостоятельно запускает backend, проверяет API и перезапуск сервера, затем останавливает тестовый процесс. Второй терминал и ручные `curl`-запросы не нужны. Подробности: [backend/README.md](backend/README.md).
 
-Backend слушает только `127.0.0.1`, не имеет собственной авторизации, не управляет MQTT и пока не сохраняет данные. Формат проекта описан в [docs/PROJECT_FORMAT.md](docs/PROJECT_FORMAT.md), а тестовый файл находится в `tests/fixtures/project-v3.json`. Установка на WB будет отдельно после проверки toolchain.
+Backend слушает только `127.0.0.1`, не имеет собственной авторизации и не управляет MQTT. Проекты записывает в `<data-dir>/projects/*.json` (при запуске каталог создаётся). API описан в [docs/API.md](docs/API.md), формат — в [docs/PROJECT_FORMAT.md](docs/PROJECT_FORMAT.md). Тестовый проект — `tests/fixtures/project-v3.json`. Установка на WB и проверка кросс-сборки будут отдельно.
+
+## Проверка в WSL после распаковки архива (шаг 06)
+
+Выполните `bash tests/check.sh` из корня проекта. Скрипт запускает CMake с **полной пересборкой** (`--clean-first`), чтобы не использовать старый исполняемый файл из шага 05 после распаковки исходников в Windows. Затем проверяет наличие API проектов, выполняет 4 CTest и 12 HTTP-проверок.
+
+Если в журнале backend отображается `Data directory (not used yet)`, значит запущен устаревший backend. Начиная с шага 06 выводится `Projects directory: .../projects`. Файлы на контроллере при автоматических проверках не затрагиваются.
 
 ## Структура
 
@@ -56,26 +57,34 @@ WEBWB/
 ├── backend/
 │   ├── README.md             # требования и запуск в WSL
 │   ├── include/webwb/project_validation.hpp
+│   ├── include/webwb/project_store.hpp
 │   ├── src/main.cpp          # HTTP-сервер
 │   ├── src/project_validation.cpp # JSON-проверка
-│   └── tests/project_validation_test.cpp
-├── tests/fixtures/project-v3.json
+│   ├── src/project_store.cpp # файловое хранение
+│   └── tests/
+│       ├── project_validation_test.cpp
+│       └── project_store_test.cpp
+├── tests/
+│   ├── fixtures/project-v3.json
+│   └── smoke_api.py            # автоматическая проверка API в WSL
 └── docs/
     ├── ROADMAP.md
     ├── ARCHITECTURE.md
     ├── STATE.md
+    ├── API.md
     ├── PROJECT_FORMAT.md
     ├── PROTOTYPE_V03.md
     └── assets/editor-v0.3.png
 ```
 
-JavaScript разделён по ответственности без сборщика и без ES-модулей — `index.html` по-прежнему можно открыть напрямую с диска (`file://`). Файлы подключаются по порядку с `defer`: `model.js`, `view.js`, `properties.js`, `app.js`. Для связи модулей используется небольшой объект `window.WBPanelModel` и фабрики отрисовки/свойств с передачей контекста. Это внутреннее API; API backend появится позже. Шаг 05 также не изменяет frontend; после его подтверждения перейдём к файловому хранению проектов (шаг 06).
+JavaScript разделён по ответственности без сборщика и без ES-модулей — `index.html` по-прежнему можно открыть напрямую с диска (`file://`). Файлы подключаются по порядку с `defer`: `model.js`, `view.js`, `properties.js`, `app.js`. Для связи модулей используется небольшой объект `window.WBPanelModel` и фабрики отрисовки/свойств с передачей контекста. Это внутреннее API; API backend появится позже. На шаге 06 frontend не изменялся; после подтверждения перейдём к подключению редактора к API (шаг 07).
 
 ## Основные документы
 
 - [Дорожная карта](docs/ROADMAP.md) — согласованные этапы разработки.
 - [Архитектура](docs/ARCHITECTURE.md) — принятые решения, границы модулей и хранение.
-- [Формат JSON](docs/PROJECT_FORMAT.md) — поля, ограничения и тестовый API.
+- [Формат JSON](docs/PROJECT_FORMAT.md) — поля и ограничения.
+- [HTTP API проектов](docs/API.md) — маршруты и ответы сервера.
 - [Текущее состояние](docs/STATE.md) — последняя подтверждённая версия, следующий шаг, ограничения.
 - [Правила разработки](AGENTS.md) — процесс работы с архивами, WSL и Git.
 

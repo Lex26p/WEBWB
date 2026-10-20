@@ -28,14 +28,19 @@ target_include_directories(webwb_validation PUBLIC
 target_link_libraries(webwb_validation PUBLIC "${JSON_C_LIBRARY}")
 
 
+add_library(webwb_store STATIC backend/src/project_store.cpp)
+target_include_directories(webwb_store PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/backend/include")
+target_link_libraries(webwb_store PUBLIC webwb_validation)
+
 add_executable(webwb_backend backend/src/main.cpp)
 target_include_directories(webwb_backend SYSTEM PRIVATE "${BOOST_BEAST_INCLUDE_DIR}")
 target_compile_definitions(webwb_backend PRIVATE BOOST_ERROR_CODE_HEADER_ONLY)
-target_link_libraries(webwb_backend PRIVATE Threads::Threads webwb_validation)
+target_link_libraries(webwb_backend PRIVATE Threads::Threads webwb_store)
 
 if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
     target_compile_options(webwb_backend PRIVATE -Wall -Wextra -Wpedantic)
     target_compile_options(webwb_validation PRIVATE -Wall -Wextra -Wpedantic)
+    target_compile_options(webwb_store PRIVATE -Wall -Wextra -Wpedantic)
 endif()
 
 enable_testing()
@@ -48,3 +53,9 @@ target_link_libraries(webwb_validation_test PRIVATE webwb_validation)
 target_compile_definitions(webwb_validation_test PRIVATE
     WEBWB_SAMPLE_PROJECT="${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/project-v3.json")
 add_test(NAME project_validation COMMAND webwb_validation_test)
+
+add_executable(webwb_store_test backend/tests/project_store_test.cpp)
+target_link_libraries(webwb_store_test PRIVATE webwb_store)
+target_compile_definitions(webwb_store_test PRIVATE
+    WEBWB_SAMPLE_PROJECT="${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/project-v3.json")
+add_test(NAME project_storage COMMAND webwb_store_test)
