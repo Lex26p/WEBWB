@@ -48,13 +48,17 @@
   const uid = () => 'el_' + Math.random().toString(36).slice(2, 10);
   const clamp = (n, min, max) => Math.min(max, Math.max(min, Number(n) || 0));
 
+  // Для круглых, а не эллиптических углов используем px. Старые значения в %
+  // трактуются как число на ползунке: например, 16% становится 16px.
+  const normalizeRadius = (value) => Math.round(clamp(parseFloat(value) || 0, 0, 50)) + 'px';
+
   function baseStyle() {
     return {
       width: 'auto', height: 'auto',
       marginTop: '0px', marginRight: '0px', marginBottom: '0px', marginLeft: '0px',
       paddingTop: '0px', paddingRight: '0px', paddingBottom: '0px', paddingLeft: '0px',
       backgroundColor: 'transparent', borderWidth: '0px',
-      borderColor: '#d7e1ee', borderRadius: '0%'
+      borderColor: '#d7e1ee', borderRadius: '0px'
     };
   }
 
@@ -66,7 +70,7 @@
           display: 'flex', flexDirection: 'column', justifyContent: 'flex-start',
           alignItems: 'stretch', width: '100%',
           paddingTop: '18px', paddingRight: '18px', paddingBottom: '18px', paddingLeft: '18px',
-          backgroundColor: '#f4f7fc', borderRadius: '12%'
+          backgroundColor: '#f4f7fc', borderRadius: '12px'
         }};
       case 'text':
         return {...common, text: 'Новый текст', style: {...common.style,
@@ -74,7 +78,7 @@
         }};
       case 'button':
         return {...common, text: 'Нажать', style: {...common.style,
-          backgroundColor: '#3466e8', color: '#ffffff', borderRadius: '10%', fontSize: '14px'
+          backgroundColor: '#3466e8', color: '#ffffff', borderRadius: '10px', fontSize: '14px'
         }};
       case 'switch':
         return {...common, checked: false, style: {...common.style,
@@ -97,7 +101,7 @@
   function createDemo() {
     const page = createNode('container');
     page.id = 'page'; page.name = 'Страница';
-    Object.assign(page.style, { backgroundColor: '#ffffff', borderRadius: '0%' });
+    Object.assign(page.style, { backgroundColor: '#ffffff', borderRadius: '0px' });
     setSpacing(page, 'padding', 34);
     const heading = createNode('text'); heading.name = 'Заголовок'; heading.text = 'Панель управления';
     Object.assign(heading.style, {fontSize:'29px',fontWeight:'700',color:'#1b2942'});
@@ -109,7 +113,7 @@
     const row = createNode('container'); row.name = 'Карточки';
     Object.assign(row.style, {flexDirection:'row',alignItems:'stretch',paddingTop:'0px',paddingRight:'0px',paddingBottom:'0px',paddingLeft:'0px',backgroundColor:'transparent'});
     const card1 = createNode('container'); card1.name = 'Освещение';
-    Object.assign(card1.style, {width:'48%',backgroundColor:'#f2f6ff',borderRadius:'16%'});
+    Object.assign(card1.style, {width:'48%',backgroundColor:'#f2f6ff',borderRadius:'16px'});
     setSpacing(card1,'padding',23);
     setSpacing(card1,'margin',0,15,0,0);
     const t1 = createNode('text'); t1.text = 'Освещение'; t1.name='Название';
@@ -122,7 +126,7 @@
     Object.assign(b.style, {width:'170px'});
     card1.children.push(t1, t2, b);
     const card2 = createNode('container'); card2.name='Климат';
-    Object.assign(card2.style, {width:'48%',backgroundColor:'#f2f6ff',borderRadius:'16%'});
+    Object.assign(card2.style, {width:'48%',backgroundColor:'#f2f6ff',borderRadius:'16px'});
     setSpacing(card2,'padding',23);
     const t3 = createNode('text'); t3.text = 'Климат'; t3.name='Название';
     Object.assign(t3.style, {fontWeight:'700',fontSize:'19px'});
@@ -167,6 +171,8 @@
             node.style[k] = String(v);
           }
         }
+        // Единый формат для новых и прежних проектов: только px.
+        node.style.borderRadius = normalizeRadius(node.style.borderRadius);
         if (legacy) {
           for (const kind of ['margin','padding']) {
             const raw = source.style[kind];
@@ -388,7 +394,7 @@
     background: 'Цвет фона. Вариант «Прозрачный» убирает заливку.',
     borderWidth: 'Толщина рамки по периметру элемента. Значение 0 отключает рамку.',
     borderColor: 'Цвет рамки. Видно, если толщина рамки больше нуля.',
-    borderRadius: 'Устанавливает CSS border-radius от 0% до 50%. Проценты применяются браузером к размерам самого элемента.',
+    borderRadius: 'Скругление углов в пикселях, от 0 до 50. Пиксели сохраняют круглую форму углов даже у прямоугольных элементов.',
     x: 'Горизонтальная координата относительно свободного контейнера.',
     y: 'Вертикальная координата относительно свободного контейнера.',
     layout: 'Как располагать элементы внутри контейнера: сверху вниз, слева направо либо в заданных координатах.',
@@ -435,12 +441,10 @@
     return `<div class="field"><div class="field-heading"><span class="field-label">${esc(label)}</span>${help(label,TIPS[key])}</div><div class="size-control"><input class="field-input" type="number" step="1" min="0" max="99999" value="${esc(number)}" aria-label="${esc(label)} — число" data-size-number="style.${esc(key)}" ${unit === 'auto' ? 'disabled' : ''}><select class="field-select" data-size-unit="style.${esc(key)}" aria-label="${esc(label)} — единица">${[['auto','Авто'],['px','px'],['%','%']].map(([v,n]) => `<option value="${v}" ${unit === v ? 'selected' : ''}>${n}</option>`).join('')}</select></div></div>`;
   }
   function radiusField(raw) {
-    const oldPx = /^-?\d+(?:\.\d+)?px$/.test(String(raw));
-    const value = clamp(parseFloat(raw) || 0, 0, 50);
+    const value = parseInt(normalizeRadius(raw), 10);
     return `<div class="field"><div class="field-heading"><label class="field-label" for="radiusRange">Скругление</label>${help('Скругление',TIPS.borderRadius)}</div>
       <div class="radius-row"><input id="radiusRange" class="radius-range" data-prop="style.borderRadius" type="range" min="0" max="50" step="1" value="${value}">
-      <output class="radius-value" for="radiusRange">${value}%</output></div>
-      ${oldPx ? '<p class="field-note">Старое оформление в px сохранено. Передвиньте ползунок, чтобы применить значение в %.</p>' : ''}</div>`;
+      <output class="radius-value" for="radiusRange">${value}px</output></div></div>`;
   }
   function spacingFields(kind,label) {
     const node = locate(selectedId).node;
@@ -482,7 +486,7 @@
     html += section('Граница',
       field('Толщина, px','style.borderWidth',parseFloat(node.style.borderWidth) || 0,{type:'number',tip:TIPS.borderWidth}) +
       field('Цвет границы','style.borderColor',node.style.borderColor || '#d7e1ee',{type:'color',tip:TIPS.borderColor}) +
-      radiusField(node.style.borderRadius || '0%'));
+      radiusField(node.style.borderRadius || '0px'));
     if (parentIsFree) {
       html += section('Положение', `<div class="field-row">${field('Координата X, px','style.left',Number.parseFloat(node.style.left ?? '16'),{type:'number',signed:true,tip:TIPS.x})}${field('Координата Y, px','style.top',Number.parseFloat(node.style.top ?? String(16 + index*58)),{type:'number',signed:true,tip:TIPS.y})}</div>`);
     }
@@ -749,7 +753,7 @@
         const min = ['left','top'].includes(key) ? -9999 : 0;
         node.style[key] = clamp(value, min, 99999) + 'px';
       } else if (key === 'borderRadius') {
-        node.style[key] = clamp(value,0,50) + '%';
+        node.style[key] = normalizeRadius(value);
         const label = target.closest('.radius-row')?.querySelector('.radius-value');
         if (label) label.textContent = node.style[key];
       } else {
